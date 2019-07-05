@@ -39,6 +39,7 @@ impl Window {
             self.graphics.color(Color::rgba(0.8, 0.5, 0.0, 1.0));
             self.graphics.fill_rect(Point::new(0.0, 0.0), Point::new(10.0, 10.0));
             self.graphics.end_frame();
+            self.graphics.draw_texture_test();
 
             self.context.swap_buffers().unwrap();
 
