@@ -27,7 +27,7 @@ impl Graphics {
     }
 
     pub fn clear(&mut self, color: Color) {
-        self.renderer.clear(color.to_linear());
+        self.renderer.clear(color.to_linear_premul());
     }
 
     pub fn begin_frame(&mut self) {
@@ -103,8 +103,13 @@ impl Color {
         Color { r, g, b, a }
     }
 
-    fn to_linear(&self) -> [f32; 4] {
-        [srgb_to_linear(self.r), srgb_to_linear(self.g), srgb_to_linear(self.b), self.a]
+    fn to_linear_premul(&self) -> [f32; 4] {
+        [
+            self.a * srgb_to_linear(self.r),
+            self.a * srgb_to_linear(self.g),
+            self.a * srgb_to_linear(self.b),
+            self.a
+        ]
     }
 }
 
