@@ -1,4 +1,4 @@
-use crate::graphics::{Graphics, Point};
+use crate::graphics::{Color, Graphics, Point};
 
 const FRAME: std::time::Duration = std::time::Duration::from_micros(1_000_000 / 60);
 
@@ -34,12 +34,9 @@ impl Window {
             now = std::time::Instant::now();
             fps_counter.update(elapsed);
 
-            unsafe {
-                gl::ClearColor(0.0, 0.0, 0.0, 1.0);
-                gl::Clear(gl::COLOR_BUFFER_BIT);
-            }
-
+            self.graphics.clear(Color::rgba(0.1, 0.15, 0.2, 1.0));
             self.graphics.begin_frame();
+            self.graphics.color(Color::rgba(0.8, 0.5, 0.0, 1.0));
             self.graphics.fill_rect(Point::new(0.0, 0.0), Point::new(10.0, 10.0));
             self.graphics.end_frame();
 
