@@ -8,18 +8,12 @@ macro_rules! offset {
 
 #[derive(Copy, Clone, Debug)]
 pub struct Vertex {
-    pub pos: [f32; 3],
-    pub col: [f32; 4],
-}
-
-#[derive(Copy, Clone, Debug)]
-pub struct TexturedVertex {
-    pub pos: [f32; 3],
-    pub col: [f32; 4],
+    pub pos: [f32; 2],
     pub uv: [f32; 2],
+    pub path: [u16; 2],
 }
 
-pub enum TextureFormat { RGBA, A }
+pub enum TextureFormat { RGBA, A, RGB }
 pub type TextureId = usize;
 
 pub struct RenderOptions {
@@ -37,8 +31,9 @@ pub struct Renderer {
     height: u32,
 
     prog: Program,
-    prog_tex_rgba: Program,
-    prog_tex_a: Program,
+
+    curves: Texture,
+
     textures: HashMap<TextureId, Texture>,
     texture_id: TextureId,
 }
@@ -46,14 +41,60 @@ pub struct Renderer {
 impl Renderer {
     pub fn new(width: u32, height: u32) -> Renderer {
         let prog = Program::new(
-            &CStr::from_bytes_with_nul(VERT).unwrap(),
-            &CStr::from_bytes_with_nul(FRAG).unwrap()).unwrap();
-        let prog_tex_rgba = Program::new(
-            &CStr::from_bytes_with_nul(VERT_TEX_RGBA).unwrap(),
-            &CStr::from_bytes_with_nul(FRAG_TEX_RGBA).unwrap()).unwrap();
-        let prog_tex_a = Program::new(
-            &CStr::from_bytes_with_nul(VERT_TEX_A).unwrap(),
-            &CStr::from_bytes_with_nul(FRAG_TEX_A).unwrap()).unwrap();
+            &CString::new(include_bytes!("shader/vert.glsl") as &[u8]).unwrap(),
+            &CString::new(include_bytes!("shader/root.glsl") as &[u8]).unwrap()).unwrap();
+
+        fn to_u16(x: f32) -> u16 { (((x + 100.0) / 1000.0) * std::u16::MAX as f32) as u16 }
+
+        let font = ttf_parser::Font::from_data(include_bytes!("../res/sawarabi-gothic-medium.ttf"), 0).unwrap();
+        struct Builder { first: Option<[f32; 2]>, last: [f32; 2], curves: Vec<[u16; 3]> }
+        impl ttf_parser::glyf::OutlineBuilder for Builder {
+            fn move_to(&mut self, x: f32, y: f32) {
+                if self.first.is_none() {
+                    self.first = Some([x, y]);
+                }
+                self.last = [x, y];
+            }
+            fn line_to(&mut self, x: f32, y: f32) {
+                self.curves.push([to_u16(self.last[0]), to_u16(self.last[1]), to_u16(x)]);
+                self.curves.push([to_u16(y), to_u16(x), to_u16(y)]);
+                self.last = [x, y];
+            }
+            fn quad_to(&mut self, x1: f32, y1: f32, x: f32, y: f32) {
+                self.curves.push([to_u16(self.last[0]), to_u16(self.last[1]), to_u16(x1)]);
+                self.curves.push([to_u16(y1), to_u16(x), to_u16(y)]);
+                self.last = [x, y];
+            }
+            fn close(&mut self) {
+                if let Some(first) = self.first {
+                    self.line_to(first[0], first[1]);
+                }
+                self.first = None;
+            }
+        }
+        let a = font.glyph_index('A').unwrap();
+        let glyph = font.glyph(a).unwrap();
+        let mut builder = Builder { first: None, last: [0.0, 0.0], curves: Vec::new() };
+        glyph.outline(&mut builder);
+
+        let x = font.glyph_index('8').unwrap();
+        let glyph = font.glyph(x).unwrap();
+        glyph.outline(&mut builder);
+        println!("{}", builder.curves.len());
+
+
+        let curves: [[u16; 3]; 8] = [
+            [std::u16::MAX / 2, std::u16::MAX / 4, std::u16::MAX / 2],
+            [std::u16::MAX / 2, std::u16::MAX, std::u16::MAX],
+            [0, 0, 0],
+            [0, 0, 0],
+            [0, 0, 0],
+            [0, 0, 0],
+            [0, 0, 0],
+            [0, 0, 0],
+        ];
+
+        let curves = Texture::new(TextureFormat::RGB, builder.curves.len() as u32, 1, &builder.curves);
 
         unsafe {
             gl::BlendFunc(gl::ONE, gl::ONE_MINUS_SRC_ALPHA);
@@ -66,8 +107,9 @@ impl Renderer {
             height,
 
             prog,
-            prog_tex_rgba,
-            prog_tex_a,
+
+            curves,
+
             textures: HashMap::new(),
             texture_id: 0,
         }
@@ -88,40 +130,44 @@ impl Renderer {
     }
 
     pub fn draw(&mut self, vertices: &[Vertex], indices: &[u16], options: &RenderOptions) {
-        self.apply_options(options);
-        let vertex_array = VertexArray::new(vertices, indices);
+        let mut query: u32 = 0;
         unsafe {
-            gl::UseProgram(self.prog.id);
-            gl::DrawElements(gl::TRIANGLES, vertex_array.count, gl::UNSIGNED_SHORT, 0 as *const GLvoid);
+            gl::GenQueries(1, &mut query);
+            gl::BeginQuery(gl::TIME_ELAPSED, query);
         }
-        self.unapply_options(options);
-    }
 
-    pub fn draw_textured(&mut self, vertices: &[TexturedVertex], indices: &[u16], texture: TextureId, options: &RenderOptions) {
         self.apply_options(options);
-        let texture = self.textures.get(&texture).unwrap();
         let vertex_array = VertexArray::new(vertices, indices);
         unsafe {
             gl::ActiveTexture(gl::TEXTURE0);
-            gl::BindTexture(gl::TEXTURE_2D, texture.id);
-            match texture.format {
-                TextureFormat::RGBA => { gl::UseProgram(self.prog_tex_rgba.id); }
-                TextureFormat::A => { gl::UseProgram(self.prog_tex_a.id); }
-            }
+            gl::BindTexture(gl::TEXTURE_2D, self.curves.id);
+            gl::UseProgram(self.prog.id);
             gl::Uniform1i(0, 0);
             gl::DrawElements(gl::TRIANGLES, vertex_array.count, gl::UNSIGNED_SHORT, 0 as *const GLvoid);
         }
         self.unapply_options(options);
+
+        let mut elapsed: u64 = 0;
+        unsafe {
+            gl::EndQuery(gl::TIME_ELAPSED);
+            let mut available: i32 = 0;
+            while available == 0 {
+                gl::GetQueryObjectiv(query, gl::QUERY_RESULT_AVAILABLE, &mut available);
+            }
+            gl::GetQueryObjectui64v(query, gl::QUERY_RESULT, &mut elapsed);
+        }
+
+        println!("{}", elapsed);
     }
 
-    pub fn create_texture(&mut self, format: TextureFormat, width: u32, height: u32, pixels: &[u8]) -> TextureId {
+    pub fn create_texture<T: Copy>(&mut self, format: TextureFormat, width: u32, height: u32, pixels: &[T]) -> TextureId {
         let id = self.texture_id;
         self.textures.insert(id, Texture::new(format, width, height, pixels));
         self.texture_id += 1;
         id
     }
 
-    pub fn update_texture(&mut self, texture: TextureId, x: u32, y: u32, width: u32, height: u32, pixels: &[u8]) {
+    pub fn update_texture<T: Copy>(&mut self, texture: TextureId, x: u32, y: u32, width: u32, height: u32, pixels: &[T]) {
         self.textures.get_mut(&texture).unwrap().update(x, y, width, height, pixels);
     }
 
@@ -220,20 +266,11 @@ trait VertexAttribs {
 impl VertexAttribs for Vertex {
     unsafe fn attribs() {
         gl::EnableVertexAttribArray(0);
-        gl::VertexAttribPointer(0, 3, gl::FLOAT, gl::FALSE, std::mem::size_of::<Vertex>() as GLint, offset!(Vertex, pos) as *const GLvoid);
+        gl::VertexAttribPointer(0, 2, gl::FLOAT, gl::FALSE, std::mem::size_of::<Vertex>() as GLint, offset!(Vertex, pos) as *const GLvoid);
         gl::EnableVertexAttribArray(1);
-        gl::VertexAttribPointer(1, 4, gl::FLOAT, gl::FALSE, std::mem::size_of::<Vertex>() as GLint, offset!(Vertex, col) as *const GLvoid);
-    }
-}
-
-impl VertexAttribs for TexturedVertex {
-    unsafe fn attribs() {
-        gl::EnableVertexAttribArray(0);
-        gl::VertexAttribPointer(0, 3, gl::FLOAT, gl::FALSE, std::mem::size_of::<TexturedVertex>() as GLint, offset!(TexturedVertex, pos) as *const GLvoid);
-        gl::EnableVertexAttribArray(1);
-        gl::VertexAttribPointer(1, 4, gl::FLOAT, gl::FALSE, std::mem::size_of::<TexturedVertex>() as GLint, offset!(TexturedVertex, col) as *const GLvoid);
+        gl::VertexAttribPointer(1, 2, gl::FLOAT, gl::FALSE, std::mem::size_of::<Vertex>() as GLint, offset!(Vertex, uv) as *const GLvoid);
         gl::EnableVertexAttribArray(2);
-        gl::VertexAttribPointer(2, 2, gl::FLOAT, gl::FALSE, std::mem::size_of::<TexturedVertex>() as GLint, offset!(TexturedVertex, uv) as *const GLvoid);
+        gl::VertexAttribIPointer(2, 2, gl::UNSIGNED_SHORT, std::mem::size_of::<Vertex>() as GLint, offset!(Vertex, path) as *const GLvoid);
     }
 }
 
@@ -287,7 +324,9 @@ struct Texture {
 }
 
 impl Texture {
-    fn new(format: TextureFormat, width: u32, height: u32, pixels: &[u8]) -> Texture {
+    fn new<T: Copy>(format: TextureFormat, width: u32, height: u32, pixels: &[T]) -> Texture {
+        assert!(pixels.len() as u32 == width * height);
+
         let flipped = flip(pixels, width);
         let mut id: GLuint = 0;
         unsafe {
@@ -295,14 +334,16 @@ impl Texture {
             gl::BindTexture(gl::TEXTURE_2D, id);
             match format {
                 TextureFormat::RGBA => {
-                    assert!(flipped.len() as u32 == width * height * 4);
                     gl::PixelStorei(gl::UNPACK_ALIGNMENT, 4);
-                    gl::TexImage2D(gl::TEXTURE_2D, 0, gl::SRGB8_ALPHA8 as GLint, width as i32, height as i32, 0, gl::RGBA, gl::UNSIGNED_INT_8_8_8_8, flipped.as_ptr() as *const std::ffi::c_void);
+                    gl::TexImage2D(gl::TEXTURE_2D, 0, gl::SRGB8_ALPHA8 as GLint, width as i32, height as i32, 0, gl::RGBA, gl::UNSIGNED_INT_8_8_8_8, pixels.as_ptr() as *const std::ffi::c_void);
                 }
                 TextureFormat::A => {
-                    assert!(flipped.len() as u32 == width * height);
                     gl::PixelStorei(gl::UNPACK_ALIGNMENT, 1);
-                    gl::TexImage2D(gl::TEXTURE_2D, 0, gl::R8 as GLint, width as i32, height as i32, 0, gl::RED, gl::UNSIGNED_BYTE, flipped.as_ptr() as *const std::ffi::c_void);
+                    gl::TexImage2D(gl::TEXTURE_2D, 0, gl::R16F as GLint, width as i32, height as i32, 0, gl::RED, gl::UNSIGNED_BYTE, pixels.as_ptr() as *const std::ffi::c_void);
+                }
+                TextureFormat::RGB => {
+                    gl::PixelStorei(gl::UNPACK_ALIGNMENT, 2);
+                    gl::TexImage2D(gl::TEXTURE_2D, 0, gl::RGB16 as GLint, width as i32, height as i32, 0, gl::RGB, gl::UNSIGNED_SHORT, pixels.as_ptr() as *const std::ffi::c_void);
                 }
             }
             gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MIN_FILTER, gl::NEAREST as i32);
@@ -311,22 +352,28 @@ impl Texture {
         Texture { id, format, width, height, framebuffer: None }
     }
 
-    fn update(&mut self, x: u32, y: u32, width: u32, height: u32, pixels: &[u8]) {
+    fn update<T: Copy>(&mut self, x: u32, y: u32, width: u32, height: u32, pixels: &[T]) {
+        assert!(pixels.len() as u32 == width * height);
+
         let flipped = flip(pixels, width);
         unsafe { gl::BindTexture(gl::TEXTURE_2D, self.id); }
         match self.format {
             TextureFormat::RGBA => {
-                if flipped.len() as u32 != width * height * 4 { panic!() }
                 unsafe {
                     gl::PixelStorei(gl::UNPACK_ALIGNMENT, 4);
-                    gl::TexSubImage2D(gl::TEXTURE_2D, 0, x as i32, y as i32, width as i32, height as i32, gl::RGBA, gl::UNSIGNED_INT_8_8_8_8, flipped.as_ptr() as *const std::ffi::c_void);
+                    gl::TexSubImage2D(gl::TEXTURE_2D, 0, x as i32, y as i32, width as i32, height as i32, gl::RGBA, gl::UNSIGNED_INT_8_8_8_8, pixels.as_ptr() as *const std::ffi::c_void);
                 }
             }
             TextureFormat::A => {
-                if flipped.len() as u32 != width * height { panic!() }
                 unsafe {
                     gl::PixelStorei(gl::UNPACK_ALIGNMENT, 1);
-                    gl::TexSubImage2D(gl::TEXTURE_2D, 0, x as i32, y as i32, width as i32, height as i32, gl::RED, gl::UNSIGNED_BYTE, flipped.as_ptr() as *const std::ffi::c_void);
+                    gl::TexSubImage2D(gl::TEXTURE_2D, 0, x as i32, y as i32, width as i32, height as i32, gl::RED, gl::UNSIGNED_BYTE, pixels.as_ptr() as *const std::ffi::c_void);
+                }
+            }
+            TextureFormat::RGB => {
+                unsafe {
+                    gl::PixelStorei(gl::UNPACK_ALIGNMENT, 2);
+                    gl::TexSubImage2D(gl::TEXTURE_2D, 0, x as i32, y as i32, width as i32, height as i32, gl::RGB, gl::UNSIGNED_SHORT, pixels.as_ptr() as *const std::ffi::c_void);
                 }
             }
         }
@@ -339,10 +386,10 @@ impl Drop for Texture {
     }
 }
 
-fn flip(pixels: &[u8], width: u32) -> Vec<u8> {
-    let mut flipped: Vec<u8> = Vec::with_capacity(pixels.len());
+fn flip<T: Copy>(pixels: &[T], width: u32) -> Vec<T> {
+    let mut flipped: Vec<T> = Vec::with_capacity(pixels.len());
     for chunk in pixels.rchunks(width as usize) {
-        flipped.extend(chunk);
+        flipped.extend_from_slice(chunk);
     }
     flipped
 }
@@ -369,88 +416,3 @@ impl Drop for Framebuffer {
         unsafe { gl::DeleteFramebuffers(1, &self.id); }
     }
 }
-
-const VERT: &[u8] = b"
-#version 330
-
-layout(location = 0) in vec3 pos;
-layout(location = 1) in vec4 col;
-
-out vec4 v_col;
-
-void main() {
-    gl_Position = vec4(pos, 1.0);
-    v_col = col;
-}
-\0";
-const FRAG: &[u8] = b"
-#version 330
-
-in vec4 v_col;
-
-out vec4 f_col;
-
-void main() {
-    f_col = v_col;
-}
-\0";
-const VERT_TEX_RGBA: &[u8] = b"
-#version 330
-
-layout(location = 0) in vec3 pos;
-layout(location = 1) in vec4 col;
-layout(location = 2) in vec2 uv;
-
-out vec2 v_uv;
-out vec4 v_col;
-
-void main() {
-    gl_Position = vec4(pos, 1.0);
-    v_uv = uv;
-    v_col = col;
-}
-\0";
-const FRAG_TEX_RGBA: &[u8] = b"
-#version 330
-
-uniform sampler2D tex;
-
-in vec2 v_uv;
-in vec4 v_col;
-
-out vec4 f_col;
-
-void main() {
-    f_col = v_col * texture(tex, v_uv);
-}
-\0";
-const VERT_TEX_A: &[u8] = b"
-#version 330
-
-layout(location = 0) in vec3 pos;
-layout(location = 1) in vec4 col;
-layout(location = 2) in vec2 uv;
-
-out vec4 v_col;
-out vec2 v_uv;
-
-void main() {
-    gl_Position = vec4(pos, 1.0);
-    v_uv = uv;
-    v_col = col;
-}
-\0";
-const FRAG_TEX_A: &[u8] = b"
-#version 330
-
-uniform sampler2D tex;
-
-in vec4 v_col;
-in vec2 v_uv;
-
-out vec4 f_col;
-
-void main() {
-    f_col = v_col * texture(tex, v_uv).r;
-}
-\0";
