@@ -1,25 +1,40 @@
 use crate::render::*;
 
-const TOLERANCE: f32 = 0.1;
 
 pub struct Graphics {
     renderer: Renderer,
     width: f32,
     height: f32,
     color: Color,
-    vertices: Vec<Vertex>,
-    indices: Vec<u16>,
 }
 
 impl Graphics {
     pub fn new(width: f32, height: f32) -> Graphics {
+        let mut renderer = Renderer::new();
+
+        renderer.upload_paths(0, &[
+            std::u16::MAX / 2, std::u16::MAX / 4,
+            std::u16::MAX / 8 * 5, std::u16::MAX / 8 * 3,
+            std::u16::MAX / 4 * 3, std::u16::MAX / 2,
+
+            std::u16::MAX / 4 * 3, std::u16::MAX / 2,
+            std::u16::MAX / 8 * 5, std::u16::MAX / 8 * 5,
+            std::u16::MAX / 2, std::u16::MAX / 4 * 3,
+
+            std::u16::MAX / 2, std::u16::MAX / 4 * 3,
+            std::u16::MAX / 4, std::u16::MAX / 2,
+            std::u16::MAX / 4, std::u16::MAX / 2,
+
+            std::u16::MAX / 4, std::u16::MAX / 2,
+            std::u16::MAX / 2, std::u16::MAX / 4,
+            std::u16::MAX / 2, std::u16::MAX / 4,
+        ]);
+
         Graphics {
-            renderer: Renderer::new(),
+            renderer,
             width,
             height,
             color: Color::rgba(1.0, 1.0, 1.0, 1.0),
-            vertices: Vec::new(),
-            indices: Vec::new(),
         }
     }
 
@@ -32,86 +47,43 @@ impl Graphics {
         self.renderer.clear(color.to_linear_premul());
     }
 
-    pub fn begin_frame(&mut self) {
-        self.vertices = Vec::new();
-        self.indices = Vec::new();
+    pub fn begin_frame(&mut self) {}
+
+    pub fn end_frame(&mut self) {}
+
+    pub fn draw_path(&mut self) {
+        self.renderer.draw(&[
+            Vertex { pos: [0.0, 0.0], uv: [0.0, 0.0], path: [0, 4] },
+            Vertex { pos: [0.5, 0.0], uv: [1.0, 0.0], path: [0, 4] },
+            Vertex { pos: [0.5, 0.5], uv: [1.0, 1.0], path: [0, 4] },
+            Vertex { pos: [0.0, 0.5], uv: [0.0, 1.0], path: [0, 4] },
+        ], &[0, 1, 2, 0, 2, 3]);
     }
 
-    pub fn end_frame(&mut self) {
-        self.renderer.draw(&self.vertices, &self.indices);
-    }
-
-    pub fn color(&mut self, color: Color) {
+    pub fn set_color(&mut self, color: Color) {
         self.color = color;
-    }
-
-    pub fn path(&mut self) -> PathBuilder {
-        PathBuilder::new(self)
-    }
-
-    pub fn fill_rect(&mut self, pos: Point, size: Point) {
-        self.path()
-            .move_to(pos)
-            .line_to(Point::new(pos.x, pos.y + size.y))
-            .line_to(Point::new(pos.x + size.x, pos.y + size.y))
-            .line_to(Point::new(pos.x + size.x, pos.y))
-            .fill_convex();
-    }
-
-    pub fn draw_texture_test(&mut self) {
-        let tex = self.renderer.create_texture(TextureFormat::A, 4, 4, &[
-            127, 0, 127, 0,
-            0, 127, 0, 127,
-            127, 0, 127, 0,
-            0, 127, 0, 127,
-        ]);
-        self.renderer.draw_textured(&[
-            TexturedVertex { pos: [0.0, 0.0, 0.0], col: [1.0, 1.0, 1.0, 1.0], uv: [0.0, 0.0] },
-            TexturedVertex { pos: [1.0, 0.0, 0.0], col: [1.0, 1.0, 1.0, 1.0], uv: [1.0, 0.0] },
-            TexturedVertex { pos: [1.0, 1.0, 0.0], col: [1.0, 1.0, 1.0, 1.0], uv: [1.0, 1.0] },
-            TexturedVertex { pos: [0.0, 1.0, 0.0], col: [1.0, 1.0, 1.0, 1.0], uv: [0.0, 1.0] },
-        ], &[0, 1, 2, 0, 2, 3], tex);
     }
 }
 
 pub struct PathBuilder<'g> {
     graphics: &'g mut Graphics,
-    points: Vec<Point>,
-    components: Vec<usize>,
-    cursor: Point,
 }
 
 impl<'g> PathBuilder<'g> {
     fn new(graphics: &'g mut Graphics) -> PathBuilder<'g> {
-        PathBuilder { graphics, points: Vec::new(), components: vec![0], cursor: Point::new(0.0, 0.0) }
+        PathBuilder { graphics }
     }
 
     pub fn move_to(&mut self, point: Point) -> &mut Self {
-        if *self.components.last().unwrap() != self.points.len() {
-            self.points.push(self.cursor);
-            self.components.push(self.points.len());
-        }
-        self.cursor = point;
         self
     }
 
     pub fn line_to(&mut self, point: Point) -> &mut Self {
-        self.points.push(self.cursor);
-        self.cursor = point;
         self
     }
 
-    pub fn fill_convex(&mut self) {
-        self.points.push(self.cursor);
-        let start = self.graphics.vertices.len() as u16;
-        for point in self.points.iter() {
-            let ndc = point.pixel_to_ndc(self.graphics.width, self.graphics.height);
-            let color = self.graphics.color.to_linear_premul();
-            self.graphics.vertices.push(Vertex { pos: [ndc.x, ndc.y, 0.0], col: color });
-        }
-        for i in (start+1)..(self.graphics.vertices.len() as u16 - 1) {
-            self.graphics.indices.extend(&[start, i, i + 1]);
-        }
+    pub fn quadratic_to(&mut self, control: Point, point: Point) -> &mut Self {
+        self
     }
 }
 
