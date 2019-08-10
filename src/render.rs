@@ -58,12 +58,12 @@ impl Renderer {
         }
     }
 
-    pub fn upload_paths(&mut self, index: u32, segments: &[u16]) {
+    pub fn upload_paths(&mut self, index: u16, segments: &[u16]) {
         assert!(segments.len() % 6 == 0);
         let texels: &[[u16; 3]] = unsafe {
             std::slice::from_raw_parts(segments.as_ptr() as *const [u16; 3], segments.len() / 3)
         };
-        self.paths.update(index, 0, texels.len() as u32, 1, texels);
+        self.paths.update(2 * index as u32, 0, texels.len() as u32, 1, texels);
     }
 }
 

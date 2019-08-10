@@ -1,40 +1,24 @@
 use crate::render::*;
 
+#[derive(Copy, Clone)]
+pub struct PathId(usize);
 
 pub struct Graphics {
     renderer: Renderer,
     width: f32,
     height: f32,
-    color: Color,
+    paths: Vec<Path>,
+    free_path: u16,
 }
 
 impl Graphics {
     pub fn new(width: f32, height: f32) -> Graphics {
-        let mut renderer = Renderer::new();
-
-        renderer.upload_paths(0, &[
-            std::u16::MAX / 2, std::u16::MAX / 4,
-            std::u16::MAX / 8 * 5, std::u16::MAX / 8 * 3,
-            std::u16::MAX / 4 * 3, std::u16::MAX / 2,
-
-            std::u16::MAX / 4 * 3, std::u16::MAX / 2,
-            std::u16::MAX / 8 * 5, std::u16::MAX / 8 * 5,
-            std::u16::MAX / 2, std::u16::MAX / 4 * 3,
-
-            std::u16::MAX / 2, std::u16::MAX / 4 * 3,
-            std::u16::MAX / 4, std::u16::MAX / 2,
-            std::u16::MAX / 4, std::u16::MAX / 2,
-
-            std::u16::MAX / 4, std::u16::MAX / 2,
-            std::u16::MAX / 2, std::u16::MAX / 4,
-            std::u16::MAX / 2, std::u16::MAX / 4,
-        ]);
-
         Graphics {
-            renderer,
+            renderer: Renderer::new(),
             width,
             height,
-            color: Color::rgba(1.0, 1.0, 1.0, 1.0),
+            paths: Vec::new(),
+            free_path: 0,
         }
     }
 
@@ -51,39 +35,177 @@ impl Graphics {
 
     pub fn end_frame(&mut self) {}
 
-    pub fn draw_path(&mut self) {
+    pub fn draw_path(&mut self, path: PathId) {
+        let path = &self.paths[path.0];
+        let min = path.offset.pixel_to_ndc(self.width, self.height);
+        let max = (path.offset + path.size).pixel_to_ndc(self.width, self.height);
         self.renderer.draw(&[
-            Vertex { pos: [0.0, 0.0], uv: [0.0, 0.0], path: [0, 4] },
-            Vertex { pos: [0.5, 0.0], uv: [1.0, 0.0], path: [0, 4] },
-            Vertex { pos: [0.5, 0.5], uv: [1.0, 1.0], path: [0, 4] },
-            Vertex { pos: [0.0, 0.5], uv: [0.0, 1.0], path: [0, 4] },
+            Vertex { pos: [min.x, min.y], uv: [0.0, 0.0], path: [path.start, path.length] },
+            Vertex { pos: [max.x, min.y], uv: [1.0, 0.0], path: [path.start, path.length] },
+            Vertex { pos: [max.x, max.y], uv: [1.0, 1.0], path: [path.start, path.length] },
+            Vertex { pos: [min.x, max.y], uv: [0.0, 1.0], path: [path.start, path.length] },
         ], &[0, 1, 2, 0, 2, 3]);
     }
 
-    pub fn set_color(&mut self, color: Color) {
-        self.color = color;
+    pub fn path(&mut self) -> PathBuilder {
+        PathBuilder::new(self)
+    }
+}
+
+struct Path {
+    offset: Point,
+    size: Point,
+    start: u16,
+    length: u16,
+}
+
+struct Segment {
+    p1: Point,
+    p2: Point,
+    p3: Point,
+}
+
+impl Segment {
+    fn split(&self, t: f32) -> (Segment, Segment) {
+        let p12 = Point::lerp(t, self.p1, self.p2);
+        let p23 = Point::lerp(t, self.p2, self.p3);
+        let point = Point::lerp(t, p12, p23);
+        (Segment { p1: self.p1, p2: p12, p3: point }, Segment { p1: point, p2: p23, p3: self.p3 })
     }
 }
 
 pub struct PathBuilder<'g> {
     graphics: &'g mut Graphics,
+    segments: Vec<Segment>,
+    first: Point,
+    last: Point,
 }
 
 impl<'g> PathBuilder<'g> {
     fn new(graphics: &'g mut Graphics) -> PathBuilder<'g> {
-        PathBuilder { graphics }
+        PathBuilder {
+            graphics,
+            segments: Vec::new(),
+            first: Point::new(0.0, 0.0),
+            last: Point::new(0.0, 0.0),
+        }
     }
 
-    pub fn move_to(&mut self, point: Point) -> &mut Self {
+    pub fn move_to(&mut self, x: f32, y: f32) -> &mut Self {
+        self.close();
+        self.first = Point::new(x, y);
+        self.last = Point::new(x, y);
         self
     }
 
-    pub fn line_to(&mut self, point: Point) -> &mut Self {
+    pub fn line_to(&mut self, x: f32, y: f32) -> &mut Self {
+        let point = Point::new(x, y);
+
+        self.segments.push(Segment {
+            p1: self.last,
+            p2: 0.5 * (self.last + point),
+            p3: point,
+        });
+
+        self.last = point;
+
         self
     }
 
-    pub fn quadratic_to(&mut self, control: Point, point: Point) -> &mut Self {
+    pub fn quadratic_to(&mut self, x1: f32, y1: f32, x2: f32, y2: f32) -> &mut Self {
+        fn monotone(a: f32, b: f32, c: f32) -> bool {
+            (a <= b && b <= c) || (c <= b && b <= a)
+        }
+
+        fn solve(a: f32, b: f32, c: f32) -> f32 {
+            (a - b) / (a - 2.0 * b + c)
+        }
+
+        let segment = Segment { p1: self.last, p2: Point::new(x1, y1), p3: Point::new(x2, y2) };
+
+        let x_split = if !monotone(segment.p1.x, segment.p2.x, segment.p3.x) {
+            Some(solve(segment.p1.x, segment.p2.x, segment.p3.x))
+        } else {
+            None
+        };
+        let y_split = if !monotone(segment.p1.y, segment.p2.y, segment.p3.y) {
+            Some(solve(segment.p1.y, segment.p2.y, segment.p3.y))
+        } else {
+            None
+        };
+
+        match (x_split, y_split) {
+            (Some(x_split), Some(y_split)) => {
+                let (split1, split2) = (x_split.min(y_split), x_split.max(y_split));
+                let (first, rest) = segment.split(split1);
+                let (second, third) = rest.split((split2 - split1) / (1.0 - split1));
+                self.segments.push(first);
+                self.segments.push(second);
+                self.segments.push(third);
+            }
+            (Some(split), None) | (None, Some(split)) => {
+                let (first, second) = segment.split(split);
+                self.segments.push(first);
+                self.segments.push(second);
+            }
+            (None, None) => {
+                self.segments.push(segment);
+            }
+        }
+
+        self.last = Point::new(x2, y2);
+
         self
+    }
+
+    pub fn build(&mut self) -> PathId {
+        self.close();
+
+        let (mut min_x, mut max_x) = (std::f32::INFINITY, -std::f32::INFINITY);
+        let (mut min_y, mut max_y) = (std::f32::INFINITY, -std::f32::INFINITY);
+        for segment in self.segments.iter() {
+            for p in &[segment.p1, segment.p2, segment.p3] {
+                min_x = min_x.min(p.x);
+                max_x = max_x.max(p.x);
+                min_y = min_y.min(p.y);
+                max_y = max_y.max(p.y);
+            }
+        }
+        if !min_x.is_finite() { min_x = 0.0; }
+        if !max_x.is_finite() { max_x = 0.0; }
+        if !min_y.is_finite() { min_y = 0.0; }
+        if !max_y.is_finite() { max_y = 0.0; }
+
+        let offset = Point::new(min_x, min_y);
+        let size = Point::new(max_x - min_x, max_y - min_y);
+
+        let mut data = Vec::with_capacity(self.segments.len() * 6);
+        for segment in self.segments.iter() {
+            data.extend([
+                (segment.p1.x - min_x) / size.x, (segment.p1.y - min_y) / size.y,
+                (segment.p2.x - min_x) / size.x, (segment.p2.y - min_y) / size.y,
+                (segment.p3.x - min_x) / size.x, (segment.p3.y - min_y) / size.y,
+            ].iter().map(|x| (x * std::u16::MAX as f32).round() as u16));
+        }
+
+        self.graphics.renderer.upload_paths(self.graphics.free_path as u16, &data);
+
+        let id = self.graphics.paths.len();
+        self.graphics.paths.push(Path {
+            offset,
+            size,
+            start: self.graphics.free_path,
+            length: self.segments.len() as u16,
+        });
+        self.graphics.free_path += self.segments.len() as u16;
+
+        PathId(id)
+    }
+
+    fn close(&mut self) {
+        if self.first.distance(self.last) > 1.0e-6 {
+            self.line_to(self.first.x, self.first.y);
+        }
     }
 }
 
@@ -114,7 +236,7 @@ fn srgb_to_linear(x: f32) -> f32 {
 use std::ops;
 
 #[derive(Copy, Clone, Debug)]
-pub struct Point { pub x: f32, pub y: f32 }
+struct Point { x: f32, y: f32 }
 
 impl Point {
     #[inline]

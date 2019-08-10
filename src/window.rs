@@ -1,4 +1,4 @@
-use crate::graphics::{Color, Graphics, Point};
+use crate::graphics::{Color, Graphics, PathId};
 
 const FRAME: std::time::Duration = std::time::Duration::from_micros(1_000_000 / 60);
 
@@ -6,6 +6,7 @@ pub struct Window {
     events_loop: glutin::EventsLoop,
     context: glutin::ContextWrapper<glutin::PossiblyCurrent, glutin::Window>,
     graphics: Graphics,
+    path: PathId,
 }
 
 impl Window {
@@ -20,9 +21,16 @@ impl Window {
 
         gl::load_with(|symbol| context.get_proc_address(symbol) as *const _);
 
-        let graphics = Graphics::new(800.0, 600.0);
+        let mut graphics = Graphics::new(800.0, 600.0);
 
-        Window { events_loop, context, graphics }
+        let path = graphics.path()
+            .move_to(50.0, 0.0)
+            .line_to(100.0, 50.0)
+            .line_to(50.0, 100.0)
+            .line_to(0.0, 50.0)
+            .build();
+
+        Window { events_loop, context, graphics, path }
     }
 
     pub fn run(&mut self) {
@@ -36,8 +44,7 @@ impl Window {
 
             self.graphics.clear(Color::rgba(0.3, 0.56, 0.7, 1.0));
             self.graphics.begin_frame();
-            self.graphics.set_color(Color::rgba(1.0, 1.0, 1.0, 1.0));
-            self.graphics.draw_path();
+            self.graphics.draw_path(self.path);
             self.graphics.end_frame();
 
             self.context.swap_buffers().unwrap();
