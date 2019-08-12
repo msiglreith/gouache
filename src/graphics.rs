@@ -35,20 +35,22 @@ impl Graphics {
 
     pub fn end_frame(&mut self) {}
 
-    pub fn draw_path(&mut self, path: PathId) {
+    pub fn path(&mut self) -> PathBuilder {
+        PathBuilder::new(self)
+    }
+
+    pub fn draw_path(&mut self, x: f32, y: f32, path: PathId) {
         let path = &self.paths[path.0];
-        let min = path.offset.pixel_to_ndc(self.width, self.height);
-        let max = (path.offset + path.size).pixel_to_ndc(self.width, self.height);
+        let min = (Point::new(x, y) + path.offset - Point::new(1.0, 1.0))
+            .pixel_to_ndc(self.width, self.height);
+        let max = (Point::new(x, y) + path.offset + path.size + Point::new(1.0, 1.0))
+            .pixel_to_ndc(self.width, self.height);
         self.renderer.draw(&[
             Vertex { pos: [min.x, min.y], uv: [0.0, 0.0], path: [path.start, path.length] },
             Vertex { pos: [max.x, min.y], uv: [1.0, 0.0], path: [path.start, path.length] },
             Vertex { pos: [max.x, max.y], uv: [1.0, 1.0], path: [path.start, path.length] },
             Vertex { pos: [min.x, max.y], uv: [0.0, 1.0], path: [path.start, path.length] },
         ], &[0, 1, 2, 0, 2, 3]);
-    }
-
-    pub fn path(&mut self) -> PathBuilder {
-        PathBuilder::new(self)
     }
 }
 
