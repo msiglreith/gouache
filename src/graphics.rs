@@ -45,11 +45,13 @@ impl Graphics {
             .pixel_to_ndc(self.width, self.height);
         let max = (Point::new(x, y) + path.offset + path.size + Point::new(1.0, 1.0))
             .pixel_to_ndc(self.width, self.height);
+        let dx = 1.0 / path.size.x as f32;
+        let dy = 1.0 / path.size.y as f32;
         self.renderer.draw(&[
-            Vertex { pos: [min.x, min.y], uv: [0.0, 0.0], path: [path.start, path.length] },
-            Vertex { pos: [max.x, min.y], uv: [1.0, 0.0], path: [path.start, path.length] },
-            Vertex { pos: [max.x, max.y], uv: [1.0, 1.0], path: [path.start, path.length] },
-            Vertex { pos: [min.x, max.y], uv: [0.0, 1.0], path: [path.start, path.length] },
+            Vertex { pos: [min.x, min.y], uv: [-dx, -dy], path: [path.start, path.length] },
+            Vertex { pos: [max.x, min.y], uv: [1.0 + dx, -dy], path: [path.start, path.length] },
+            Vertex { pos: [max.x, max.y], uv: [1.0 + dx, 1.0 + dy], path: [path.start, path.length] },
+            Vertex { pos: [min.x, max.y], uv: [-dx, 1.0 + dy], path: [path.start, path.length] },
         ], &[0, 1, 2, 0, 2, 3]);
     }
 }
