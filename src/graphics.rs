@@ -9,6 +9,8 @@ pub struct Graphics {
     height: f32,
     paths: Vec<Path>,
     free_path: u16,
+    vertices: Vec<Vertex>,
+    indices: Vec<u16>,
 }
 
 impl Graphics {
@@ -19,6 +21,8 @@ impl Graphics {
             height,
             paths: Vec::new(),
             free_path: 0,
+            vertices: Vec::new(),
+            indices: Vec::new(),
         }
     }
 
@@ -31,9 +35,14 @@ impl Graphics {
         self.renderer.clear(color.to_linear_premul());
     }
 
-    pub fn begin_frame(&mut self) {}
+    pub fn begin_frame(&mut self) {
+        self.vertices = Vec::new();
+        self.indices = Vec::new();
+    }
 
-    pub fn end_frame(&mut self) {}
+    pub fn end_frame(&mut self) {
+        self.renderer.draw(&self.vertices, &self.indices);
+    }
 
     pub fn path(&mut self) -> PathBuilder {
         PathBuilder::new(self)
@@ -47,12 +56,14 @@ impl Graphics {
             .pixel_to_ndc(self.width, self.height);
         let dx = 1.0 / path.size.x as f32;
         let dy = 1.0 / path.size.y as f32;
-        self.renderer.draw(&[
+        let i = self.vertices.len() as u16;
+        self.vertices.extend_from_slice(&[
             Vertex { pos: [min.x, min.y], uv: [-dx, -dy], path: [path.start, path.length] },
             Vertex { pos: [max.x, min.y], uv: [1.0 + dx, -dy], path: [path.start, path.length] },
             Vertex { pos: [max.x, max.y], uv: [1.0 + dx, 1.0 + dy], path: [path.start, path.length] },
             Vertex { pos: [min.x, max.y], uv: [-dx, 1.0 + dy], path: [path.start, path.length] },
-        ], &[0, 1, 2, 0, 2, 3]);
+        ]);
+        self.indices.extend_from_slice(&[i, i + 1, i + 2, i, i + 2, i + 3]);
     }
 }
 
@@ -234,7 +245,7 @@ impl Color {
 }
 
 fn srgb_to_linear(x: f32) -> f32 {
-    if x < 0.04045 { x / 12.92 } else { ((x + 0.055)/1.055).powf(2.4)  }
+    if x < 0.04045 { x / 12.92 } else { ((x + 0.055) / 1.055).powf(2.4)  }
 }
 
 use std::ops;

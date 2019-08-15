@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::ffi::{CStr, CString};
 use gl::types::{GLuint, GLint, GLchar, GLenum, GLvoid};
 
