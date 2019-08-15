@@ -44,7 +44,7 @@ impl Window {
 
             self.graphics.clear(Color::rgba(0.3, 0.56, 0.7, 1.0));
             self.graphics.begin_frame();
-            self.graphics.draw_path(10.0, 10.0, self.path);
+            self.graphics.draw_path(10.0, 10.0, 1.0, self.path);
             self.graphics.end_frame();
 
             self.context.swap_buffers().unwrap();

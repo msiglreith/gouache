@@ -44,14 +44,14 @@ impl Graphics {
         self.renderer.draw(&self.vertices, &self.indices);
     }
 
-    pub fn draw_path(&mut self, x: f32, y: f32, path: PathId) {
+    pub fn draw_path(&mut self, x: f32, y: f32, scale: f32, path: PathId) {
         let path = &self.paths[path.0];
-        let min = (Point::new(x, y) + path.offset - Point::new(1.0, 1.0))
+        let min = (Point::new(x, y) + scale * path.offset - Point::new(1.0, 1.0))
             .pixel_to_ndc(self.width, self.height);
-        let max = (Point::new(x, y) + path.offset + path.size + Point::new(1.0, 1.0))
+        let max = (Point::new(x, y) + scale * (path.offset + path.size) + Point::new(1.0, 1.0))
             .pixel_to_ndc(self.width, self.height);
-        let dx = 1.0 / path.size.x as f32;
-        let dy = 1.0 / path.size.y as f32;
+        let dx = 1.0 / (scale * path.size.x as f32);
+        let dy = 1.0 / (scale * path.size.y as f32);
         let i = self.vertices.len() as u16;
         self.vertices.extend_from_slice(&[
             Vertex { pos: [min.x, min.y], uv: [-dx, -dy], path: [path.start, path.length] },
