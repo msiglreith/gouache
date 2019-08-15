@@ -1,4 +1,4 @@
-use crate::graphics::{Color, Graphics, PathBuilder, PathId};
+use crate::graphics::{Color, Graphics, PathBuilder, PathId, FontId};
 
 const FRAME: std::time::Duration = std::time::Duration::from_micros(1_000_000 / 60);
 
@@ -6,7 +6,7 @@ pub struct Window {
     events_loop: glutin::EventsLoop,
     context: glutin::ContextWrapper<glutin::PossiblyCurrent, glutin::Window>,
     graphics: Graphics,
-    path: PathId,
+    font: FontId,
 }
 
 impl Window {
@@ -23,14 +23,9 @@ impl Window {
 
         let mut graphics = Graphics::new(800.0, 600.0);
 
-        let path = PathBuilder::new()
-            .move_to(50.0, 0.0)
-            .line_to(100.0, 50.0)
-            .line_to(50.0, 100.0)
-            .line_to(0.0, 50.0)
-            .build(&mut graphics);
+        let font = graphics.add_font(include_bytes!("../res/SourceSansPro-Regular.ttf")).unwrap();
 
-        Window { events_loop, context, graphics, path }
+        Window { events_loop, context, graphics, font }
     }
 
     pub fn run(&mut self) {
@@ -44,7 +39,7 @@ impl Window {
 
             self.graphics.clear(Color::rgba(0.3, 0.56, 0.7, 1.0));
             self.graphics.begin_frame();
-            self.graphics.draw_path(10.0, 10.0, 1.0, self.path);
+            self.graphics.draw_text(0.0, 0.0, 12.0, self.font, "jackdaws love my big sphinx of quartz 1234567890");
             self.graphics.end_frame();
 
             self.context.swap_buffers().unwrap();

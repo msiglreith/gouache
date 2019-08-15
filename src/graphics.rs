@@ -1,7 +1,12 @@
+use std::collections::HashMap;
+
 use crate::render::*;
 
 #[derive(Copy, Clone)]
 pub struct PathId(usize);
+
+#[derive(Copy, Clone)]
+pub struct FontId(usize);
 
 pub struct Graphics {
     renderer: Renderer,
@@ -9,6 +14,7 @@ pub struct Graphics {
     height: f32,
     paths: Vec<Path>,
     free_path: u16,
+    fonts: Vec<Font>,
     vertices: Vec<Vertex>,
     indices: Vec<u16>,
 }
@@ -21,6 +27,7 @@ impl Graphics {
             height,
             paths: Vec::new(),
             free_path: 0,
+            fonts: Vec::new(),
             vertices: Vec::new(),
             indices: Vec::new(),
         }
@@ -60,6 +67,60 @@ impl Graphics {
             Vertex { pos: [min.x, max.y], uv: [-dx, 1.0 + dy], path: [path.start, path.length] },
         ]);
         self.indices.extend_from_slice(&[i, i + 1, i + 2, i, i + 2, i + 3]);
+    }
+
+    pub fn add_font(&mut self, bytes: &'static [u8]) -> Option<FontId> {
+        if let Ok(font) = ttf_parser::Font::from_data(bytes, 0) {
+            let id = self.fonts.len();
+            self.fonts.push(Font::new(font));
+            Some(FontId(id))
+        } else {
+            None
+        }
+    }
+
+    pub fn draw_text(&mut self, x: f32, y: f32, size: f32, font_id: FontId, text: &str) {
+        let (units_per_em, ascender) = {
+            let font = &self.fonts[font_id.0].font;
+            (font.units_per_em().unwrap() as f32, font.ascender() as f32)
+        };
+        let scale = size / units_per_em;
+        let mut x = x;
+        let y = y + scale * ascender;
+        for c in text.chars() {
+            if let Ok(glyph_id) = self.fonts[font_id.0].font.glyph_index(c) {
+                if let Some(&path) = self.fonts[font_id.0].glyphs.get(&glyph_id) {
+                    self.draw_path(x, y, scale, path);
+                } else if let Ok(glyph) = self.fonts[font_id.0].font.glyph(glyph_id) {
+                    let path = Self::build_glyph(&glyph).build(self);
+                    self.fonts[font_id.0].glyphs.insert(glyph_id, path);
+                    self.draw_path(x, y, scale, path);
+                };
+
+                x += scale * self.fonts[font_id.0].font.glyph_hor_metrics(glyph_id).unwrap().advance as f32;
+            }
+        }
+    }
+
+    fn build_glyph(glyph: &ttf_parser::glyf::Glyph) -> PathBuilder {
+        use ttf_parser::glyf::OutlineBuilder;
+        struct Builder { path: PathBuilder }
+        impl OutlineBuilder for Builder {
+            fn move_to(&mut self, x: f32, y: f32) {
+                self.path.move_to(x, -y);
+            }
+            fn line_to(&mut self, x: f32, y: f32) {
+                self.path.line_to(x, -y);
+            }
+            fn quad_to(&mut self, x1: f32, y1: f32, x: f32, y: f32) {
+                self.path.quadratic_to(x1, -y1, x, -y);
+            }
+            fn close(&mut self) {}
+        }
+
+        let mut builder = Builder { path: PathBuilder::new() };
+        glyph.outline(&mut builder);
+        builder.path
     }
 }
 
@@ -215,6 +276,17 @@ impl PathBuilder {
         graphics.free_path += self.segments.len() as u16;
 
         PathId(id)
+    }
+}
+
+struct Font {
+    font: ttf_parser::Font<'static>,
+    glyphs: HashMap<u16, PathId>,
+}
+
+impl Font {
+    fn new(font: ttf_parser::Font<'static>) -> Font {
+        Font { font, glyphs: HashMap::new() }
     }
 }
 
