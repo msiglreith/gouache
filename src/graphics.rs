@@ -199,7 +199,7 @@ impl<'g> PathBuilder<'g> {
             offset,
             size,
             start: self.graphics.free_path,
-            length: self.segments.len() as u16,
+            length: self.graphics.free_path + self.segments.len() as u16,
         });
         self.graphics.free_path += self.segments.len() as u16;
 
