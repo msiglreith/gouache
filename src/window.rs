@@ -1,4 +1,4 @@
-use crate::graphics::{Color, Graphics, PathId};
+use crate::graphics::{Color, Graphics, PathBuilder, PathId};
 
 const FRAME: std::time::Duration = std::time::Duration::from_micros(1_000_000 / 60);
 
@@ -23,12 +23,12 @@ impl Window {
 
         let mut graphics = Graphics::new(800.0, 600.0);
 
-        let path = graphics.path()
+        let path = PathBuilder::new()
             .move_to(50.0, 0.0)
             .line_to(100.0, 50.0)
             .line_to(50.0, 100.0)
             .line_to(0.0, 50.0)
-            .build();
+            .build(&mut graphics);
 
         Window { events_loop, context, graphics, path }
     }

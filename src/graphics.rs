@@ -44,10 +44,6 @@ impl Graphics {
         self.renderer.draw(&self.vertices, &self.indices);
     }
 
-    pub fn path(&mut self) -> PathBuilder {
-        PathBuilder::new(self)
-    }
-
     pub fn draw_path(&mut self, x: f32, y: f32, path: PathId) {
         let path = &self.paths[path.0];
         let min = (Point::new(x, y) + path.offset - Point::new(1.0, 1.0))
@@ -89,17 +85,15 @@ impl Segment {
     }
 }
 
-pub struct PathBuilder<'g> {
-    graphics: &'g mut Graphics,
+pub struct PathBuilder {
     segments: Vec<Segment>,
     first: Point,
     last: Point,
 }
 
-impl<'g> PathBuilder<'g> {
-    fn new(graphics: &'g mut Graphics) -> PathBuilder<'g> {
+impl PathBuilder {
+    pub fn new() -> PathBuilder {
         PathBuilder {
-            graphics,
             segments: Vec::new(),
             first: Point::new(0.0, 0.0),
             last: Point::new(0.0, 0.0),
@@ -173,7 +167,13 @@ impl<'g> PathBuilder<'g> {
         self
     }
 
-    pub fn build(&mut self) -> PathId {
+    fn close(&mut self) {
+        if self.first.distance(self.last) > 1.0e-6 {
+            self.line_to(self.first.x, self.first.y);
+        }
+    }
+
+    pub fn build(&mut self, graphics: &mut Graphics) -> PathId {
         self.close();
 
         let (mut min_x, mut max_x) = (std::f32::INFINITY, -std::f32::INFINITY);
@@ -203,24 +203,18 @@ impl<'g> PathBuilder<'g> {
             ].iter().map(|x| (x * std::u16::MAX as f32).round() as u16));
         }
 
-        self.graphics.renderer.upload_paths(self.graphics.free_path as u16, &data);
+        graphics.renderer.upload_paths(graphics.free_path as u16, &data);
 
-        let id = self.graphics.paths.len();
-        self.graphics.paths.push(Path {
+        let id = graphics.paths.len();
+        graphics.paths.push(Path {
             offset,
             size,
-            start: self.graphics.free_path,
-            length: self.graphics.free_path + self.segments.len() as u16,
+            start: graphics.free_path,
+            length: graphics.free_path + self.segments.len() as u16,
         });
-        self.graphics.free_path += self.segments.len() as u16;
+        graphics.free_path += self.segments.len() as u16;
 
         PathId(id)
-    }
-
-    fn close(&mut self) {
-        if self.first.distance(self.last) > 1.0e-6 {
-            self.line_to(self.first.x, self.first.y);
-        }
     }
 }
 
