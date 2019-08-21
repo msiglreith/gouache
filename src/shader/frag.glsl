@@ -33,8 +33,8 @@ void main() {
             float x = mix(mix(p0.x, p1.x, t), mix(p1.x, p2.x, t), t);
 
             vec2 tangent = mix(p1 - p0, p2 - p1, t);
-            float dxdy = tangent.x / tangent.y;
-            float x_overlap = clamp((0.5 * footprint.x + (x - v_uv.x) / max(1.0, abs(dxdy) * (footprint.y / footprint.x))) / footprint.x, 0.0, 1.0);
+            float f = ((x - v_uv.x) * abs(tangent.y)) / length(vec2(footprint.x * tangent.y, footprint.y * tangent.x));
+            float x_overlap = clamp(0.5 + f, 0.0, 1.0);
 
             alpha += x_overlap * y_overlap;
         }
