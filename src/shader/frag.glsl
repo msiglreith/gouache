@@ -40,7 +40,7 @@ void main() {
         }
     }
 
-    float brightness = 0.0;
+    float brightness = 1.0;
     alpha = clamp(abs(alpha), 0.0, 1.0);
-    f_col = mix((1.0 - (1.0 - alpha) * (1.0 - alpha)), alpha * alpha, sqrt(brightness)) * vec4(brightness, brightness, brightness, 1.0);
+    f_col = mix(1.0 - (1.0 - alpha) * (1.0 - alpha), alpha * alpha, sqrt(brightness)) * vec4(brightness, brightness, brightness, 1.0);
 }
