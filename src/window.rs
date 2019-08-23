@@ -39,7 +39,7 @@ impl Window {
 
             self.graphics.clear(Color::rgba(0.3, 0.56, 0.7, 1.0));
             self.graphics.begin_frame();
-            self.graphics.draw_text(0.0, 0.0, 12.0, self.font, "jackdaws love my big sphinx of quartz 1234567890");
+            self.graphics.draw_text(0.0, 0.0, 12.0, self.font, Color::rgba(1.0, 1.0, 1.0, 1.0), "jackdaws love my big sphinx of quartz 1234567890");
             self.graphics.end_frame();
 
             self.context.swap_buffers().unwrap();

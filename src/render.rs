@@ -8,6 +8,7 @@ macro_rules! offset {
 #[derive(Copy, Clone, Debug)]
 pub struct Vertex {
     pub pos: [f32; 2],
+    pub col: [f32; 4],
     pub uv: [f32; 2],
     pub path: [u16; 2],
 }
@@ -136,9 +137,11 @@ impl VertexAttribs for Vertex {
         gl::EnableVertexAttribArray(0);
         gl::VertexAttribPointer(0, 2, gl::FLOAT, gl::FALSE, std::mem::size_of::<Vertex>() as GLint, offset!(Vertex, pos) as *const GLvoid);
         gl::EnableVertexAttribArray(1);
-        gl::VertexAttribPointer(1, 2, gl::FLOAT, gl::FALSE, std::mem::size_of::<Vertex>() as GLint, offset!(Vertex, uv) as *const GLvoid);
+        gl::VertexAttribPointer(1, 4, gl::FLOAT, gl::FALSE, std::mem::size_of::<Vertex>() as GLint, offset!(Vertex, col) as *const GLvoid);
         gl::EnableVertexAttribArray(2);
-        gl::VertexAttribIPointer(2, 2, gl::UNSIGNED_SHORT, std::mem::size_of::<Vertex>() as GLint, offset!(Vertex, path) as *const GLvoid);
+        gl::VertexAttribPointer(2, 2, gl::FLOAT, gl::FALSE, std::mem::size_of::<Vertex>() as GLint, offset!(Vertex, uv) as *const GLvoid);
+        gl::EnableVertexAttribArray(3);
+        gl::VertexAttribIPointer(3, 2, gl::UNSIGNED_SHORT, std::mem::size_of::<Vertex>() as GLint, offset!(Vertex, path) as *const GLvoid);
     }
 }
 

@@ -2,6 +2,7 @@
 
 uniform sampler2D curves;
 
+in vec4 v_col;
 in vec2 v_uv;
 flat in uvec2 v_path;
 
@@ -40,7 +41,7 @@ void main() {
         }
     }
 
-    float brightness = 1.0;
+    float brightness = (v_col.r + v_col.g + v_col.b) / (3.0 * v_col.a);
     alpha = clamp(abs(alpha), 0.0, 1.0);
-    f_col = mix(1.0 - (1.0 - alpha) * (1.0 - alpha), alpha * alpha, sqrt(brightness)) * vec4(brightness, brightness, brightness, 1.0);
+    f_col = mix(1.0 - (1.0 - alpha) * (1.0 - alpha), alpha * alpha, sqrt(brightness)) * v_col;
 }

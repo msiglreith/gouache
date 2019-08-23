@@ -51,8 +51,9 @@ impl Graphics {
         self.renderer.draw(&self.vertices, &self.indices);
     }
 
-    pub fn draw_path(&mut self, x: f32, y: f32, scale: f32, path: PathId) {
+    pub fn draw_path(&mut self, x: f32, y: f32, scale: f32, color: Color, path: PathId) {
         let path = &self.paths[path.0];
+
         let dilation = 0.5;
         let min = (Point::new(x, y) + scale * path.offset - Point::new(dilation, dilation))
             .pixel_to_ndc(self.width, self.height);
@@ -60,12 +61,15 @@ impl Graphics {
             .pixel_to_ndc(self.width, self.height);
         let dx = dilation / (scale * path.size.x as f32);
         let dy = dilation / (scale * path.size.y as f32);
+
+        let col = color.to_linear_premul();
+
         let i = self.vertices.len() as u16;
         self.vertices.extend_from_slice(&[
-            Vertex { pos: [min.x, min.y], uv: [-dx, -dy], path: [path.start, path.length] },
-            Vertex { pos: [max.x, min.y], uv: [1.0 + dx, -dy], path: [path.start, path.length] },
-            Vertex { pos: [max.x, max.y], uv: [1.0 + dx, 1.0 + dy], path: [path.start, path.length] },
-            Vertex { pos: [min.x, max.y], uv: [-dx, 1.0 + dy], path: [path.start, path.length] },
+            Vertex { pos: [min.x, min.y], col, uv: [-dx, -dy], path: [path.start, path.length] },
+            Vertex { pos: [max.x, min.y], col, uv: [1.0 + dx, -dy], path: [path.start, path.length] },
+            Vertex { pos: [max.x, max.y], col, uv: [1.0 + dx, 1.0 + dy], path: [path.start, path.length] },
+            Vertex { pos: [min.x, max.y], col, uv: [-dx, 1.0 + dy], path: [path.start, path.length] },
         ]);
         self.indices.extend_from_slice(&[i, i + 1, i + 2, i, i + 2, i + 3]);
     }
@@ -80,7 +84,7 @@ impl Graphics {
         }
     }
 
-    pub fn draw_text(&mut self, x: f32, y: f32, size: f32, font_id: FontId, text: &str) {
+    pub fn draw_text(&mut self, x: f32, y: f32, size: f32, font_id: FontId, color: Color, text: &str) {
         let (units_per_em, ascender) = {
             let font = &self.fonts[font_id.0].font;
             (font.units_per_em().unwrap() as f32, font.ascender() as f32)
@@ -91,11 +95,11 @@ impl Graphics {
         for c in text.chars() {
             if let Ok(glyph_id) = self.fonts[font_id.0].font.glyph_index(c) {
                 if let Some(&path) = self.fonts[font_id.0].glyphs.get(&glyph_id) {
-                    self.draw_path(x, y, scale, path);
+                    self.draw_path(x, y, scale, color, path);
                 } else if let Ok(glyph) = self.fonts[font_id.0].font.glyph(glyph_id) {
                     let path = Self::build_glyph(&glyph).build(self);
                     self.fonts[font_id.0].glyphs.insert(glyph_id, path);
-                    self.draw_path(x, y, scale, path);
+                    self.draw_path(x, y, scale, color, path);
                 };
 
                 x += scale * self.fonts[font_id.0].font.glyph_hor_metrics(glyph_id).unwrap().advance as f32;
