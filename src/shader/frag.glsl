@@ -1,6 +1,7 @@
 #version 330
 
-uniform sampler2D curves;
+uniform usampler2D indices;
+uniform sampler2D points;
 
 in vec4 v_col;
 in vec2 v_uv;
@@ -15,11 +16,12 @@ void main() {
 
     float alpha = 0.0;
     for (uint i = v_path.x; i < v_path.y; i++) {
-        vec3 t1 = texelFetch(curves, ivec2(2u * i, 0), 0).xyz;
-        vec3 t2 = texelFetch(curves, ivec2(2u * i + 1u, 0), 0).xyz;
+        uint index = uint(texelFetch(indices, ivec2(int(i), 0), 0).x);
+        vec4 t1 = texelFetch(points, ivec2(index, 0), 0);
+        vec4 t2 = texelFetch(points, ivec2(index + 1u, 0), 0);
         vec2 p0 = t1.xy;
-        vec2 p1 = vec2(t1.z, t2.x);
-        vec2 p2 = t2.yz;
+        vec2 p1 = t1.zw;
+        vec2 p2 = t2.xy;
 
         vec2 y_footprint = v_uv.y + vec2(-0.5 * footprint.y, 0.5 * footprint.y);
         vec2 y_window = clamp(vec2(p2.y, p0.y), y_footprint.x, y_footprint.y);

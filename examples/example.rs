@@ -1,4 +1,4 @@
-use gouache::{Color, Graphics, PathBuilder, PathId, FontId};
+use gouache::{Color, Graphics, PathBuilder};
 
 const FRAME: std::time::Duration = std::time::Duration::from_micros(1_000_000 / 60);
 
@@ -29,9 +29,6 @@ fn main() {
     let mut running = true;
     let mut now = std::time::Instant::now();
     while running {
-        let elapsed = now.elapsed();
-        now = std::time::Instant::now();
-
         graphics.clear(Color::rgba(0.1, 0.15, 0.2, 1.0));
         graphics.begin_frame();
         graphics.draw_text(0.0, 0.0, size, font, Color::rgba(1.0, 1.0, 1.0, 1.0), "jackdaws love my big sphinx of quartz 1234567890");
@@ -48,7 +45,7 @@ fn main() {
                         CloseRequested => {
                             running = false;
                         }
-                        MouseWheel { delta, modifiers, .. } => {
+                        MouseWheel { delta, .. } => {
                             match delta {
                                 glutin::MouseScrollDelta::PixelDelta(position) => { size -= 0.1 * position.y as f32; }
                                 _ => {}
@@ -65,5 +62,6 @@ fn main() {
         if elapsed < FRAME {
             std::thread::sleep(FRAME - elapsed);
         }
+        now = std::time::Instant::now();
     }
 }

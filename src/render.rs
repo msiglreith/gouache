@@ -15,7 +15,8 @@ pub struct Vertex {
 
 pub struct Renderer {
     prog: Program,
-    paths: Texture<[u16; 3]>,
+    indices: Texture<u16>,
+    points: Texture<[u16; 4]>,
 }
 
 impl Renderer {
@@ -24,7 +25,8 @@ impl Renderer {
             &CString::new(include_bytes!("shader/vert.glsl") as &[u8]).unwrap(),
             &CString::new(include_bytes!("shader/frag.glsl") as &[u8]).unwrap()).unwrap();
 
-        let paths = Texture::new(16384, 1, None);
+        let indices = Texture::new(16384, 1, None);
+        let points = Texture::new(16384, 1, None);
 
         unsafe {
             gl::BlendFunc(gl::ONE, gl::ONE_MINUS_SRC_ALPHA);
@@ -32,7 +34,7 @@ impl Renderer {
             gl::Enable(gl::FRAMEBUFFER_SRGB);
         }
 
-        Renderer { prog, paths }
+        Renderer { prog, indices, points }
     }
 
     pub fn clear(&mut self, col: [f32; 4]) {
@@ -45,20 +47,30 @@ impl Renderer {
     pub fn draw(&mut self, vertices: &[Vertex], indices: &[u16]) {
         let vertex_array = VertexArray::new(vertices, indices);
         unsafe {
-            gl::ActiveTexture(gl::TEXTURE0);
-            gl::BindTexture(gl::TEXTURE_2D, self.paths.id);
             gl::UseProgram(self.prog.id);
+
+            gl::ActiveTexture(gl::TEXTURE0);
+            gl::BindTexture(gl::TEXTURE_2D, self.indices.id);
             gl::Uniform1i(0, 0);
+
+            gl::ActiveTexture(gl::TEXTURE1);
+            gl::BindTexture(gl::TEXTURE_2D, self.points.id);
+            gl::Uniform1i(1, 1);
+
             gl::DrawElements(gl::TRIANGLES, vertex_array.count, gl::UNSIGNED_SHORT, 0 as *const GLvoid);
         }
     }
 
-    pub fn upload_paths(&mut self, index: u16, segments: &[u16]) {
-        assert!(segments.len() % 6 == 0);
-        let texels: &[[u16; 3]] = unsafe {
-            std::slice::from_raw_parts(segments.as_ptr() as *const [u16; 3], segments.len() / 3)
+    pub fn upload_indices(&mut self, index: u16, indices: &[u16]) {
+        self.indices.update(index as u32, 0, indices.len() as u32, 1, indices);
+    }
+
+    pub fn upload_points(&mut self, index: u16, points: &[u16]) {
+        assert!(points.len() % 4 == 0);
+        let texels: &[[u16; 4]] = unsafe {
+            std::slice::from_raw_parts(points.as_ptr() as *const [u16; 4], points.len() / 4)
         };
-        self.paths.update(2 * index as u32, 0, texels.len() as u32, 1, texels);
+        self.points.update(index as u32 / 4, 0, texels.len() as u32, 1, texels);
     }
 }
 
@@ -187,9 +199,15 @@ trait Texel {
     const TYPE: GLenum;
 }
 
-impl Texel for [u16; 3] {
-    const INTERNAL_FORMAT: GLint = gl::RGB16 as GLint;
-    const FORMAT: GLenum = gl::RGB;
+impl Texel for u16 {
+    const INTERNAL_FORMAT: GLint = gl::R16UI as GLint;
+    const FORMAT: GLenum = gl::RED_INTEGER;
+    const TYPE: GLenum = gl::UNSIGNED_SHORT;
+}
+
+impl Texel for [u16; 4] {
+    const INTERNAL_FORMAT: GLint = gl::RGBA16 as GLint;
+    const FORMAT: GLenum = gl::RGBA;
     const TYPE: GLenum = gl::UNSIGNED_SHORT;
 }
 

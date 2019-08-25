@@ -14,7 +14,8 @@ pub struct Graphics {
     width: f32,
     height: f32,
     paths: Vec<Path>,
-    free_path: u16,
+    indices_free: u16,
+    points_free: u16,
     fonts: Vec<Font>,
     vertices: Vec<Vertex>,
     indices: Vec<u16>,
@@ -27,7 +28,8 @@ impl Graphics {
             width,
             height,
             paths: Vec::new(),
-            free_path: 0,
+            indices_free: 0,
+            points_free: 0,
             fonts: Vec::new(),
             vertices: Vec::new(),
             indices: Vec::new(),
@@ -67,10 +69,10 @@ impl Graphics {
 
         let i = self.vertices.len() as u16;
         self.vertices.extend_from_slice(&[
-            Vertex { pos: [min.x, min.y], col, uv: [-dx, -dy], path: [path.start, path.length] },
-            Vertex { pos: [max.x, min.y], col, uv: [1.0 + dx, -dy], path: [path.start, path.length] },
-            Vertex { pos: [max.x, max.y], col, uv: [1.0 + dx, 1.0 + dy], path: [path.start, path.length] },
-            Vertex { pos: [min.x, max.y], col, uv: [-dx, 1.0 + dy], path: [path.start, path.length] },
+            Vertex { pos: [min.x, min.y], col, uv: [-dx, -dy], path: [path.start, path.end] },
+            Vertex { pos: [max.x, min.y], col, uv: [1.0 + dx, -dy], path: [path.start, path.end] },
+            Vertex { pos: [max.x, max.y], col, uv: [1.0 + dx, 1.0 + dy], path: [path.start, path.end] },
+            Vertex { pos: [min.x, max.y], col, uv: [-dx, 1.0 + dy], path: [path.start, path.end] },
         ]);
         self.indices.extend_from_slice(&[i, i + 1, i + 2, i, i + 2, i + 3]);
     }
@@ -134,26 +136,12 @@ struct Path {
     offset: Point,
     size: Point,
     start: u16,
-    length: u16,
-}
-
-struct Segment {
-    p1: Point,
-    p2: Point,
-    p3: Point,
-}
-
-impl Segment {
-    fn split(&self, t: f32) -> (Segment, Segment) {
-        let p12 = Point::lerp(t, self.p1, self.p2);
-        let p23 = Point::lerp(t, self.p2, self.p3);
-        let point = Point::lerp(t, p12, p23);
-        (Segment { p1: self.p1, p2: p12, p3: point }, Segment { p1: point, p2: p23, p3: self.p3 })
-    }
+    end: u16,
 }
 
 pub struct PathBuilder {
-    segments: Vec<Segment>,
+    points: Vec<Point>,
+    indices: Vec<usize>,
     first: Point,
     last: Point,
 }
@@ -161,7 +149,8 @@ pub struct PathBuilder {
 impl PathBuilder {
     pub fn new() -> PathBuilder {
         PathBuilder {
-            segments: Vec::new(),
+            points: Vec::new(),
+            indices: Vec::new(),
             first: Point::new(0.0, 0.0),
             last: Point::new(0.0, 0.0),
         }
@@ -177,12 +166,10 @@ impl PathBuilder {
     pub fn line_to(&mut self, x: f32, y: f32) -> &mut Self {
         let point = Point::new(x, y);
 
-        self.segments.push(Segment {
-            p1: self.last,
-            p2: 0.5 * (self.last + point),
-            p3: point,
-        });
+        self.indices.push(self.points.len());
 
+        self.points.push(self.last);
+        self.points.push(0.5 * (self.last + point));
         self.last = point;
 
         self
@@ -197,15 +184,24 @@ impl PathBuilder {
             (a - b) / (a - 2.0 * b + c)
         }
 
-        let segment = Segment { p1: self.last, p2: Point::new(x1, y1), p3: Point::new(x2, y2) };
+        fn split_at(p1: Point, p2: Point, p3: Point, t: f32) -> (Point, Point, Point, Point, Point) {
+            let p12 = Point::lerp(t, p1, p2);
+            let p23 = Point::lerp(t, p2, p3);
+            let point = Point::lerp(t, p12, p23);
+            (p1, p12, point, p23, p3)
+        }
 
-        let x_split = if !monotone(segment.p1.x, segment.p2.x, segment.p3.x) {
-            Some(solve(segment.p1.x, segment.p2.x, segment.p3.x))
+        let p1 = self.last;
+        let p2 = Point::new(x1, y1);
+        let p3 = Point::new(x2, y2);
+
+        let x_split = if !monotone(p1.x, p2.x, p3.x) {
+            Some(solve(p1.x, p2.x, p3.x))
         } else {
             None
         };
-        let y_split = if !monotone(segment.p1.y, segment.p2.y, segment.p3.y) {
-            Some(solve(segment.p1.y, segment.p2.y, segment.p3.y))
+        let y_split = if !monotone(p1.y, p2.y, p3.y) {
+            Some(solve(p1.y, p2.y, p3.y))
         } else {
             None
         };
@@ -213,19 +209,26 @@ impl PathBuilder {
         match (x_split, y_split) {
             (Some(x_split), Some(y_split)) => {
                 let (split1, split2) = (x_split.min(y_split), x_split.max(y_split));
-                let (first, rest) = segment.split(split1);
-                let (second, third) = rest.split((split2 - split1) / (1.0 - split1));
-                self.segments.push(first);
-                self.segments.push(second);
-                self.segments.push(third);
+                let (p1, p2, p3, p4, p5) = split_at(p1, p2, p3, split1);
+                let (p3, p4, p5, p6, p7) = split_at(p3, p4, p5, (split2 - split1) / (1.0 - split1));
+
+                let i = self.points.len();
+                self.indices.extend_from_slice(&[i, i + 2, i + 4]);
+                self.points.extend_from_slice(&[p1, p2, p3, p4, p5, p6]);
+                self.last = p7;
             }
             (Some(split), None) | (None, Some(split)) => {
-                let (first, second) = segment.split(split);
-                self.segments.push(first);
-                self.segments.push(second);
+                let (p1, p2, p3, p4, p5) = split_at(p1, p2, p3, split);
+
+                let i = self.points.len();
+                self.indices.extend_from_slice(&[i, i + 2]);
+                self.points.extend_from_slice(&[p1, p2, p3, p4]);
+                self.last = p5;
             }
             (None, None) => {
-                self.segments.push(segment);
+                self.indices.push(self.points.len());
+                self.points.extend_from_slice(&[p1, p2]);
+                self.last = p3;
             }
         }
 
@@ -238,6 +241,9 @@ impl PathBuilder {
         if self.first.distance(self.last) > 1.0e-6 {
             self.line_to(self.first.x, self.first.y);
         }
+
+        self.points.push(self.last);
+        self.points.push(Point::new(0.0, 0.0));
     }
 
     pub fn build(&mut self, graphics: &mut Graphics) -> PathId {
@@ -245,8 +251,8 @@ impl PathBuilder {
 
         let (mut min_x, mut max_x) = (std::f32::INFINITY, -std::f32::INFINITY);
         let (mut min_y, mut max_y) = (std::f32::INFINITY, -std::f32::INFINITY);
-        for segment in self.segments.iter() {
-            for p in &[segment.p1, segment.p2, segment.p3] {
+        for i in self.indices.iter() {
+            for p in &self.points[*i .. *i + 3] {
                 min_x = min_x.min(p.x);
                 max_x = max_x.max(p.x);
                 min_y = min_y.min(p.y);
@@ -261,25 +267,27 @@ impl PathBuilder {
         let offset = Point::new(min_x, min_y);
         let size = Point::new(max_x - min_x, max_y - min_y);
 
-        let mut data = Vec::with_capacity(self.segments.len() * 6);
-        for segment in self.segments.iter() {
-            data.extend([
-                (segment.p1.x - min_x) / size.x, (segment.p1.y - min_y) / size.y,
-                (segment.p2.x - min_x) / size.x, (segment.p2.y - min_y) / size.y,
-                (segment.p3.x - min_x) / size.x, (segment.p3.y - min_y) / size.y,
-            ].iter().map(|x| (x * std::u16::MAX as f32).round() as u16));
-        }
+        let indices: Vec<u16> = self.indices.iter().map(|i| (*i as u16 + graphics.points_free as u16 / 2) / 2).collect();
+        graphics.renderer.upload_indices(graphics.indices_free as u16, &indices);
 
-        graphics.renderer.upload_paths(graphics.free_path as u16, &data);
+        let mut points = Vec::with_capacity(self.points.len() * 2);
+        for point in self.points.iter() {
+            points.extend_from_slice(&[
+                (((point.x - min_x) / size.x) * std::u16::MAX as f32).round() as u16,
+                (((point.y - min_y) / size.y) * std::u16::MAX as f32).round() as u16,
+            ]);
+        }
+        graphics.renderer.upload_points(graphics.points_free as u16, &points);
 
         let id = graphics.paths.len();
         graphics.paths.push(Path {
             offset,
             size,
-            start: graphics.free_path,
-            length: graphics.free_path + self.segments.len() as u16,
+            start: graphics.indices_free,
+            end: graphics.indices_free + self.indices.len() as u16,
         });
-        graphics.free_path += self.segments.len() as u16;
+        graphics.indices_free += indices.len() as u16;
+        graphics.points_free += points.len() as u16;
 
         PathId(id)
     }
