@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+mod render;
 use crate::render::*;
 
 #[derive(Copy, Clone)]

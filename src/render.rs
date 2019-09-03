@@ -16,7 +16,6 @@ pub struct Vertex {
 pub struct Renderer {
     prog: Program,
     paths: Texture<[u16; 3]>,
-    paths_free: Vec<(u16, u16)>,
 }
 
 impl Renderer {
@@ -33,11 +32,7 @@ impl Renderer {
             gl::Enable(gl::FRAMEBUFFER_SRGB);
         }
 
-        Renderer {
-            prog,
-            paths,
-            paths_free: vec![(0, std::u16::MAX)],
-        }
+        Renderer { prog, paths }
     }
 
     pub fn clear(&mut self, col: [f32; 4]) {
