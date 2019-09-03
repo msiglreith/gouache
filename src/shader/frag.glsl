@@ -9,7 +9,9 @@ flat in uvec2 v_path;
 out vec4 f_col;
 
 void main() {
-    vec2 footprint = vec2(length(vec2(dFdx(v_uv.x), dFdy(v_uv.x))), length(vec2(dFdx(v_uv.y), dFdy(v_uv.y))));
+    vec2 ddx = dFdx(v_uv);
+    vec2 ddy = dFdy(v_uv);
+    vec2 footprint = sqrt(ddx * ddx + ddy * ddy);
 
     float alpha = 0.0;
     for (uint i = v_path.x; i < v_path.y; i++) {
@@ -34,7 +36,7 @@ void main() {
             float x = mix(mix(p0.x, p1.x, t), mix(p1.x, p2.x, t), t);
 
             vec2 tangent = mix(p1 - p0, p2 - p1, t);
-            float f = ((x - v_uv.x) * abs(tangent.y)) / length(vec2(footprint.x * tangent.y, footprint.y * tangent.x));
+            float f = ((x - v_uv.x) * abs(tangent.y)) / length(footprint * tangent.yx);
             float x_overlap = clamp(0.5 + f, 0.0, 1.0);
 
             alpha += x_overlap * y_overlap;
