@@ -237,6 +237,51 @@ impl PathBuilder {
         self
     }
 
+    pub fn arc_to(&mut self, radius: f32, large_arc: bool, winding: bool, x: f32, y: f32) -> &mut Self {
+        const MAX_ANGLE: f32 = std::f32::consts::PI / 4.0;
+
+        let end = Point::new(x, y);
+        let to_midpoint = 0.5 * (end - self.last);
+        let to_midpoint_len = to_midpoint.length();
+        let radius = radius.max(to_midpoint_len);
+        let to_center_len = (radius * radius - to_midpoint_len * to_midpoint_len).sqrt();
+        let center_dir = if large_arc == winding { -1.0 } else { 1.0 };
+        let to_center = if to_midpoint.length() == 0.0 {
+            Point::new(-1.0, 0.0)
+        } else {
+            Point::new(-to_midpoint.y, to_midpoint.x).normalized()
+        };
+        let center = self.last + to_midpoint + center_dir * to_center_len * to_center;
+
+        let start_vector = self.last - center;
+        let start_angle = start_vector.y.atan2(start_vector.x);
+        let end_vector = end - center;
+        let end_angle = {
+            let end_angle = end_vector.y.atan2(end_vector.x);
+            if winding && end_angle < start_angle {
+                end_angle + 2.0 * std::f32::consts::PI
+            } else if !winding && end_angle > start_angle {
+                end_angle - 2.0 * std::f32::consts::PI
+            } else {
+                end_angle
+            }
+        };
+
+        let num_segments = (((start_angle - end_angle).abs() / MAX_ANGLE).ceil() as usize).max(1).min(8);
+        for i in 0..num_segments {
+            let angle = start_angle + ((i + 1) as f32 / num_segments as f32) * (end_angle - start_angle);
+            let normal = Point::new(angle.cos(), angle.sin());
+            let point = center + radius * normal;
+
+            let tangent = Point::new(-normal.y, normal.x);
+            let control = point + 0.5 * ((self.last - point).length() / tangent.dot((self.last - point).normalized())) * tangent;
+
+            self.quadratic_to(control.x, control.y, point.x, point.y);
+        }
+
+        self
+    }
+
     fn close(&mut self) {
         if self.first.distance(self.last) > 1.0e-6 {
             self.line_to(self.first.x, self.first.y);
