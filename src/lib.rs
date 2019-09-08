@@ -340,19 +340,23 @@ impl Point {
     }
 
     #[inline]
+    pub fn dot(self, other: Point) -> f32 {
+        self.x * other.x + self.y * other.y
+    }
+
+    #[inline]
     pub fn distance(self, other: Point) -> f32 {
-        ((other.x - self.x) * (other.x - self.x) + (other.y - self.y) * (other.y - self.y)).sqrt()
+        (other - self).length()
     }
 
     #[inline]
     pub fn length(self) -> f32 {
-        (self.x * self.x + self.y * self.y).sqrt()
+        self.dot(self).sqrt()
     }
 
     #[inline]
     pub fn normalized(self) -> Point {
-        let len = self.length();
-        Point { x: self.x / len, y: self.y / len }
+        (1.0 / self.length()) * self
     }
 
     #[inline]
