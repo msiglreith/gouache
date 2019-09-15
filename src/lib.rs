@@ -166,6 +166,13 @@ impl PathBuilder {
     pub fn line_to(&mut self, x: f32, y: f32) -> &mut Self {
         let point = Point::new(x, y);
 
+        if self.last.y == point.y {
+            self.points.push(self.last);
+            self.points.push(Point::new(0.0, 0.0));
+            self.last = point;
+            return self;
+        }
+
         self.indices.push(self.points.len());
 
         self.points.push(self.last);
