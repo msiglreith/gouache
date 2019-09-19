@@ -1,4 +1,4 @@
-use gouache::{Color, Graphics, PathBuilder};
+use gouache::{Color, Scene, PathBuilder};
 
 const FRAME: std::time::Duration = std::time::Duration::from_micros(1_000_000 / 60);
 
@@ -13,27 +13,27 @@ fn main() {
 
     gl::load_with(|symbol| context.get_proc_address(symbol) as *const _);
 
-    let mut graphics = Graphics::new(800.0, 600.0);
+    let mut scene = Scene::new(800.0, 600.0);
 
-    let font = graphics.add_font(include_bytes!("../res/SourceSansPro-Regular.ttf")).unwrap();
+    let font = scene.add_font(include_bytes!("../res/SourceSansPro-Regular.ttf")).unwrap();
 
     let path = PathBuilder::new()
         .move_to(0.5, 1.0)
         .line_to(1.0, 0.5)
         .line_to(0.5, 0.0)
         .line_to(0.0, 0.5)
-        .build(&mut graphics);
+        .build(&mut scene);
 
     let mut size = 14.0;
 
     let mut running = true;
     let mut now = std::time::Instant::now();
     while running {
-        graphics.clear(Color::rgba(0.1, 0.15, 0.2, 1.0));
-        graphics.begin_frame();
-        graphics.draw_text(0.0, 0.0, size, font, Color::rgba(1.0, 1.0, 1.0, 1.0), "jackdaws love my big sphinx of quartz 1234567890");
-        graphics.draw_path(100.0, 100.0, 50.0, Color::rgba(0.0, 1.0, 1.0, 1.0), path);
-        graphics.end_frame();
+        scene.clear(Color::rgba(0.1, 0.15, 0.2, 1.0));
+        scene.begin_frame();
+        scene.draw_text(0.0, 0.0, size, font, Color::rgba(1.0, 1.0, 1.0, 1.0), "jackdaws love my big sphinx of quartz 1234567890");
+        scene.draw_path(100.0, 100.0, 50.0, Color::rgba(0.0, 1.0, 1.0, 1.0), path);
+        scene.end_frame();
 
         context.swap_buffers().unwrap();
 

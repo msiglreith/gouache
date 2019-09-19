@@ -16,7 +16,7 @@ pub struct Vertex {
 pub struct Renderer {
     prog: Program,
     indices: Texture<u16>,
-    points: Texture<[u16; 4]>,
+    vertices: Texture<[u16; 4]>,
 }
 
 impl Renderer {
@@ -26,7 +26,7 @@ impl Renderer {
             &CString::new(include_bytes!("shader/frag.glsl") as &[u8]).unwrap()).unwrap();
 
         let indices = Texture::new(16384, 1, None);
-        let points = Texture::new(16384, 1, None);
+        let vertices = Texture::new(16384, 1, None);
 
         unsafe {
             gl::BlendFunc(gl::ONE, gl::ONE_MINUS_SRC_ALPHA);
@@ -34,7 +34,7 @@ impl Renderer {
             gl::Enable(gl::FRAMEBUFFER_SRGB);
         }
 
-        Renderer { prog, indices, points }
+        Renderer { prog, indices, vertices }
     }
 
     pub fn clear(&mut self, col: [f32; 4]) {
@@ -54,7 +54,7 @@ impl Renderer {
             gl::Uniform1i(0, 0);
 
             gl::ActiveTexture(gl::TEXTURE1);
-            gl::BindTexture(gl::TEXTURE_2D, self.points.id);
+            gl::BindTexture(gl::TEXTURE_2D, self.vertices.id);
             gl::Uniform1i(1, 1);
 
             gl::DrawElements(gl::TRIANGLES, vertex_array.count, gl::UNSIGNED_SHORT, 0 as *const GLvoid);
@@ -65,12 +65,12 @@ impl Renderer {
         self.indices.update(index as u32, 0, indices.len() as u32, 1, indices);
     }
 
-    pub fn upload_points(&mut self, index: u16, points: &[u16]) {
-        assert!(points.len() % 4 == 0);
+    pub fn upload_vertices(&mut self, index: u16, vertices: &[u16]) {
+        assert!(vertices.len() % 4 == 0);
         let texels: &[[u16; 4]] = unsafe {
-            std::slice::from_raw_parts(points.as_ptr() as *const [u16; 4], points.len() / 4)
+            std::slice::from_raw_parts(vertices.as_ptr() as *const [u16; 4], vertices.len() / 4)
         };
-        self.points.update(index as u32 / 4, 0, texels.len() as u32, 1, texels);
+        self.vertices.update(index as u32 / 4, 0, texels.len() as u32, 1, texels);
     }
 }
 

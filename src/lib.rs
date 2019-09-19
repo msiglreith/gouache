@@ -1,6 +1,9 @@
 use std::collections::HashMap;
 
+mod geom;
 mod render;
+
+pub use crate::geom::*;
 use crate::render::*;
 
 #[derive(Copy, Clone)]
@@ -9,27 +12,29 @@ pub struct PathId(usize);
 #[derive(Copy, Clone)]
 pub struct FontId(usize);
 
-pub struct Graphics {
+pub struct Scene {
     renderer: Renderer,
     width: f32,
     height: f32,
+
     paths: Vec<Path>,
     indices_free: u16,
-    points_free: u16,
+    vertices_free: u16,
     fonts: Vec<Font>,
     vertices: Vec<Vertex>,
     indices: Vec<u16>,
 }
 
-impl Graphics {
-    pub fn new(width: f32, height: f32) -> Graphics {
-        Graphics {
+impl Scene {
+    pub fn new(width: f32, height: f32) -> Scene {
+        Scene {
             renderer: Renderer::new(),
             width,
             height,
+
             paths: Vec::new(),
             indices_free: 0,
-            points_free: 0,
+            vertices_free: 0,
             fonts: Vec::new(),
             vertices: Vec::new(),
             indices: Vec::new(),
@@ -58,9 +63,9 @@ impl Graphics {
         let path = &self.paths[path.0];
 
         let dilation = 0.5;
-        let min = (Point::new(x, y) + scale * path.offset - Point::new(dilation, dilation))
+        let min = (Vec2::new(x, y) + scale * path.offset - Vec2::new(dilation, dilation))
             .pixel_to_ndc(self.width, self.height);
-        let max = (Point::new(x, y) + scale * (path.offset + path.size) + Point::new(dilation, dilation))
+        let max = (Vec2::new(x, y) + scale * (path.offset + path.size) + Vec2::new(dilation, dilation))
             .pixel_to_ndc(self.width, self.height);
         let dx = dilation / (scale * path.size.x as f32);
         let dy = dilation / (scale * path.size.y as f32);
@@ -133,50 +138,50 @@ impl Graphics {
 }
 
 struct Path {
-    offset: Point,
-    size: Point,
+    offset: Vec2,
+    size: Vec2,
     start: u16,
     end: u16,
 }
 
 pub struct PathBuilder {
-    points: Vec<Point>,
+    vertices: Vec<Vec2>,
     indices: Vec<usize>,
-    first: Point,
-    last: Point,
+    first: Vec2,
+    last: Vec2,
 }
 
 impl PathBuilder {
     pub fn new() -> PathBuilder {
         PathBuilder {
-            points: Vec::new(),
+            vertices: Vec::new(),
             indices: Vec::new(),
-            first: Point::new(0.0, 0.0),
-            last: Point::new(0.0, 0.0),
+            first: Vec2::new(0.0, 0.0),
+            last: Vec2::new(0.0, 0.0),
         }
     }
 
     pub fn move_to(&mut self, x: f32, y: f32) -> &mut Self {
         self.close();
-        self.first = Point::new(x, y);
-        self.last = Point::new(x, y);
+        self.first = Vec2::new(x, y);
+        self.last = Vec2::new(x, y);
         self
     }
 
     pub fn line_to(&mut self, x: f32, y: f32) -> &mut Self {
-        let point = Point::new(x, y);
+        let point = Vec2::new(x, y);
 
         if self.last.y == point.y {
-            self.points.push(self.last);
-            self.points.push(Point::new(0.0, 0.0));
+            self.vertices.push(self.last);
+            self.vertices.push(Vec2::new(0.0, 0.0));
             self.last = point;
             return self;
         }
 
-        self.indices.push(self.points.len());
+        self.indices.push(self.vertices.len());
 
-        self.points.push(self.last);
-        self.points.push(0.5 * (self.last + point));
+        self.vertices.push(self.last);
+        self.vertices.push(0.5 * (self.last + point));
         self.last = point;
 
         self
@@ -191,16 +196,16 @@ impl PathBuilder {
             (a - b) / (a - 2.0 * b + c)
         }
 
-        fn split_at(p1: Point, p2: Point, p3: Point, t: f32) -> (Point, Point, Point, Point, Point) {
-            let p12 = Point::lerp(t, p1, p2);
-            let p23 = Point::lerp(t, p2, p3);
-            let point = Point::lerp(t, p12, p23);
+        fn split_at(p1: Vec2, p2: Vec2, p3: Vec2, t: f32) -> (Vec2, Vec2, Vec2, Vec2, Vec2) {
+            let p12 = Vec2::lerp(t, p1, p2);
+            let p23 = Vec2::lerp(t, p2, p3);
+            let point = Vec2::lerp(t, p12, p23);
             (p1, p12, point, p23, p3)
         }
 
         let p1 = self.last;
-        let p2 = Point::new(x1, y1);
-        let p3 = Point::new(x2, y2);
+        let p2 = Vec2::new(x1, y1);
+        let p3 = Vec2::new(x2, y2);
 
         let x_split = if !monotone(p1.x, p2.x, p3.x) {
             Some(solve(p1.x, p2.x, p3.x))
@@ -219,27 +224,27 @@ impl PathBuilder {
                 let (p1, p2, p3, p4, p5) = split_at(p1, p2, p3, split1);
                 let (p3, p4, p5, p6, p7) = split_at(p3, p4, p5, (split2 - split1) / (1.0 - split1));
 
-                let i = self.points.len();
+                let i = self.vertices.len();
                 self.indices.extend_from_slice(&[i, i + 2, i + 4]);
-                self.points.extend_from_slice(&[p1, p2, p3, p4, p5, p6]);
+                self.vertices.extend_from_slice(&[p1, p2, p3, p4, p5, p6]);
                 self.last = p7;
             }
             (Some(split), None) | (None, Some(split)) => {
                 let (p1, p2, p3, p4, p5) = split_at(p1, p2, p3, split);
 
-                let i = self.points.len();
+                let i = self.vertices.len();
                 self.indices.extend_from_slice(&[i, i + 2]);
-                self.points.extend_from_slice(&[p1, p2, p3, p4]);
+                self.vertices.extend_from_slice(&[p1, p2, p3, p4]);
                 self.last = p5;
             }
             (None, None) => {
-                self.indices.push(self.points.len());
-                self.points.extend_from_slice(&[p1, p2]);
+                self.indices.push(self.vertices.len());
+                self.vertices.extend_from_slice(&[p1, p2]);
                 self.last = p3;
             }
         }
 
-        self.last = Point::new(x2, y2);
+        self.last = Vec2::new(x2, y2);
 
         self
     }
@@ -247,16 +252,16 @@ impl PathBuilder {
     pub fn arc_to(&mut self, radius: f32, large_arc: bool, winding: bool, x: f32, y: f32) -> &mut Self {
         const MAX_ANGLE: f32 = std::f32::consts::PI / 4.0;
 
-        let end = Point::new(x, y);
+        let end = Vec2::new(x, y);
         let to_midpoint = 0.5 * (end - self.last);
         let to_midpoint_len = to_midpoint.length();
         let radius = radius.max(to_midpoint_len);
         let to_center_len = (radius * radius - to_midpoint_len * to_midpoint_len).sqrt();
         let center_dir = if large_arc == winding { -1.0 } else { 1.0 };
         let to_center = if to_midpoint.length() == 0.0 {
-            Point::new(-1.0, 0.0)
+            Vec2::new(-1.0, 0.0)
         } else {
-            Point::new(-to_midpoint.y, to_midpoint.x).normalized()
+            Vec2::new(-to_midpoint.y, to_midpoint.x).normalized()
         };
         let center = self.last + to_midpoint + center_dir * to_center_len * to_center;
 
@@ -277,10 +282,10 @@ impl PathBuilder {
         let num_segments = (((start_angle - end_angle).abs() / MAX_ANGLE).ceil() as usize).max(1).min(8);
         for i in 0..num_segments {
             let angle = start_angle + ((i + 1) as f32 / num_segments as f32) * (end_angle - start_angle);
-            let normal = Point::new(angle.cos(), angle.sin());
+            let normal = Vec2::new(angle.cos(), angle.sin());
             let point = center + radius * normal;
 
-            let tangent = Point::new(-normal.y, normal.x);
+            let tangent = Vec2::new(-normal.y, normal.x);
             let control = point + 0.5 * ((self.last - point).length() / tangent.dot((self.last - point).normalized())) * tangent;
 
             self.quadratic_to(control.x, control.y, point.x, point.y);
@@ -294,17 +299,17 @@ impl PathBuilder {
             self.line_to(self.first.x, self.first.y);
         }
 
-        self.points.push(self.last);
-        self.points.push(Point::new(0.0, 0.0));
+        self.vertices.push(self.last);
+        self.vertices.push(Vec2::new(0.0, 0.0));
     }
 
-    pub fn build(&mut self, graphics: &mut Graphics) -> PathId {
+    pub fn build(&mut self, graphics: &mut Scene) -> PathId {
         self.close();
 
         let (mut min_x, mut max_x) = (std::f32::INFINITY, -std::f32::INFINITY);
         let (mut min_y, mut max_y) = (std::f32::INFINITY, -std::f32::INFINITY);
         for i in self.indices.iter() {
-            for p in &self.points[*i .. *i + 3] {
+            for p in &self.vertices[*i .. *i + 3] {
                 min_x = min_x.min(p.x);
                 max_x = max_x.max(p.x);
                 min_y = min_y.min(p.y);
@@ -316,20 +321,20 @@ impl PathBuilder {
         if !min_y.is_finite() { min_y = 0.0; }
         if !max_y.is_finite() { max_y = 0.0; }
 
-        let offset = Point::new(min_x, min_y);
-        let size = Point::new(max_x - min_x, max_y - min_y);
+        let offset = Vec2::new(min_x, min_y);
+        let size = Vec2::new(max_x - min_x, max_y - min_y);
 
-        let indices: Vec<u16> = self.indices.iter().map(|i| (*i as u16 + graphics.points_free as u16 / 2) / 2).collect();
+        let indices: Vec<u16> = self.indices.iter().map(|i| (*i as u16 + graphics.vertices_free as u16 / 2) / 2).collect();
         graphics.renderer.upload_indices(graphics.indices_free as u16, &indices);
 
-        let mut points = Vec::with_capacity(self.points.len() * 2);
-        for point in self.points.iter() {
-            points.extend_from_slice(&[
+        let mut vertices = Vec::with_capacity(self.vertices.len() * 2);
+        for point in self.vertices.iter() {
+            vertices.extend_from_slice(&[
                 (((point.x - min_x) / size.x) * std::u16::MAX as f32).round() as u16,
                 (((point.y - min_y) / size.y) * std::u16::MAX as f32).round() as u16,
             ]);
         }
-        graphics.renderer.upload_points(graphics.points_free as u16, &points);
+        graphics.renderer.upload_vertices(graphics.vertices_free as u16, &vertices);
 
         let id = graphics.paths.len();
         graphics.paths.push(Path {
@@ -339,7 +344,7 @@ impl PathBuilder {
             end: graphics.indices_free + self.indices.len() as u16,
         });
         graphics.indices_free += indices.len() as u16;
-        graphics.points_free += points.len() as u16;
+        graphics.vertices_free += vertices.len() as u16;
 
         PathId(id)
     }
@@ -378,102 +383,4 @@ impl Color {
 
 fn srgb_to_linear(x: f32) -> f32 {
     if x < 0.04045 { x / 12.92 } else { ((x + 0.055) / 1.055).powf(2.4)  }
-}
-
-use std::ops;
-
-#[derive(Copy, Clone, Debug)]
-struct Point { x: f32, y: f32 }
-
-impl Point {
-    #[inline]
-    pub fn new(x: f32, y: f32) -> Point {
-        Point { x: x, y: y }
-    }
-
-    #[inline]
-    pub fn dot(self, other: Point) -> f32 {
-        self.x * other.x + self.y * other.y
-    }
-
-    #[inline]
-    pub fn distance(self, other: Point) -> f32 {
-        (other - self).length()
-    }
-
-    #[inline]
-    pub fn length(self) -> f32 {
-        self.dot(self).sqrt()
-    }
-
-    #[inline]
-    pub fn normalized(self) -> Point {
-        (1.0 / self.length()) * self
-    }
-
-    #[inline]
-    pub fn lerp(t: f32, a: Point, b: Point) -> Point {
-        (1.0 - t) * a + t * b
-    }
-
-    #[inline]
-    fn pixel_to_ndc(self, screen_width: f32, screen_height: f32) -> Point {
-        Point {
-            x: 2.0 * (self.x / screen_width as f32 - 0.5),
-            y: 2.0 * (1.0 - self.y / screen_height as f32 - 0.5),
-        }
-    }
-}
-
-impl ops::Add for Point {
-    type Output = Point;
-    #[inline]
-    fn add(self, rhs: Point) -> Point {
-        Point { x: self.x + rhs.x, y: self.y + rhs.y }
-    }
-}
-
-impl ops::AddAssign for Point {
-    #[inline]
-    fn add_assign(&mut self, other: Point) {
-        *self = *self + other;
-    }
-}
-
-impl ops::Sub for Point {
-    type Output = Point;
-    #[inline]
-    fn sub(self, rhs: Point) -> Point {
-        Point { x: self.x - rhs.x, y: self.y - rhs.y }
-    }
-}
-
-impl ops::SubAssign for Point {
-    #[inline]
-    fn sub_assign(&mut self, other: Point) {
-        *self = *self - other;
-    }
-}
-
-impl ops::Mul<f32> for Point {
-    type Output = Point;
-    #[inline]
-    fn mul(self, rhs: f32) -> Point {
-        Point { x: self.x * rhs, y: self.y * rhs }
-    }
-}
-
-impl ops::Mul<Point> for f32 {
-    type Output = Point;
-    #[inline]
-    fn mul(self, rhs: Point) -> Point {
-        Point { x: self * rhs.x, y: self * rhs.y }
-    }
-}
-
-impl ops::MulAssign<f32> for Point {
-    #[inline]
-    fn mul_assign(&mut self, other: f32) {
-        *self = *self * other;
-    }
 }
