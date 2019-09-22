@@ -46,6 +46,16 @@ impl Scene {
         self.height = height;
     }
 
+    pub fn add_font(&mut self, bytes: &'static [u8]) -> Option<FontId> {
+        if let Ok(font) = ttf_parser::Font::from_data(bytes, 0) {
+            let id = self.fonts.len();
+            self.fonts.push(Font::new(font));
+            Some(FontId(id))
+        } else {
+            None
+        }
+    }
+
     pub fn clear(&mut self, color: Color) {
         self.renderer.clear(color.to_linear_premul());
     }
@@ -59,58 +69,66 @@ impl Scene {
         self.renderer.draw(&self.vertices, &self.indices);
     }
 
-    pub fn draw_path(&mut self, x: f32, y: f32, scale: f32, color: Color, path: PathId) {
+    pub fn draw_path(&mut self, path: PathId, x: f32, y: f32, color: Color) {
+        self.draw_path_transformed(path, x, y, color, Mat2x2::id());
+    }
+
+    pub fn draw_path_transformed(&mut self, path: PathId, x: f32, y: f32, color: Color, transform: Mat2x2) {
         let path = &self.paths[path.0];
 
-        let dilation = 0.5;
-        let min = (Vec2::new(x, y) + scale * path.offset - Vec2::new(dilation, dilation))
-            .pixel_to_ndc(self.width, self.height);
-        let max = (Vec2::new(x, y) + scale * (path.offset + path.size) + Vec2::new(dilation, dilation))
-            .pixel_to_ndc(self.width, self.height);
-        let dx = dilation / (scale * path.size.x as f32);
-        let dy = dilation / (scale * path.size.y as f32);
+        let p = Vec2::new(x, y) + transform * Vec2::new(path.offset.x, path.offset.y);
+        let v1 = transform * Vec2::new(path.size.x, 0.0);
+        let v2 = transform * Vec2::new(0.0, path.size.y);
+        let n1 = v1.normalized();
+        let n2 = v2.normalized();
+
+        let d = 0.5 / n1.cross(n2).abs();
+        let d1 = d * n1;
+        let d2 = d * n2;
+
+        let dx = d / v1.length();
+        let dy = d / v2.length();
+
+        let p1 = (p - d1 - d2).pixel_to_ndc(self.width, self.height);
+        let p2 = (p + v1 + d1 - d2).pixel_to_ndc(self.width, self.height);
+        let p3 = (p + v1 + d1 + v2 + d2).pixel_to_ndc(self.width, self.height);
+        let p4 = (p - d1 + v2 + d2).pixel_to_ndc(self.width, self.height);
 
         let col = color.to_linear_premul();
 
         let i = self.vertices.len() as u16;
         self.vertices.extend_from_slice(&[
-            Vertex { pos: [min.x, min.y], col, uv: [-dx, -dy], path: [path.start, path.end] },
-            Vertex { pos: [max.x, min.y], col, uv: [1.0 + dx, -dy], path: [path.start, path.end] },
-            Vertex { pos: [max.x, max.y], col, uv: [1.0 + dx, 1.0 + dy], path: [path.start, path.end] },
-            Vertex { pos: [min.x, max.y], col, uv: [-dx, 1.0 + dy], path: [path.start, path.end] },
+            Vertex { pos: [p1.x, p1.y], col, uv: [-dx, -dy], path: [path.start, path.end] },
+            Vertex { pos: [p2.x, p2.y], col, uv: [1.0 + dx, -dy], path: [path.start, path.end] },
+            Vertex { pos: [p3.x, p3.y], col, uv: [1.0 + dx, 1.0 + dy], path: [path.start, path.end] },
+            Vertex { pos: [p4.x, p4.y], col, uv: [-dx, 1.0 + dy], path: [path.start, path.end] },
         ]);
         self.indices.extend_from_slice(&[i, i + 1, i + 2, i, i + 2, i + 3]);
     }
 
-    pub fn add_font(&mut self, bytes: &'static [u8]) -> Option<FontId> {
-        if let Ok(font) = ttf_parser::Font::from_data(bytes, 0) {
-            let id = self.fonts.len();
-            self.fonts.push(Font::new(font));
-            Some(FontId(id))
-        } else {
-            None
-        }
+    pub fn draw_text(&mut self, font_id: FontId, size: f32, text: &str, x: f32, y: f32, color: Color) {
+        self.draw_text_transformed(font_id, size, text, x, y, color, Mat2x2::id());
     }
 
-    pub fn draw_text(&mut self, x: f32, y: f32, size: f32, font_id: FontId, color: Color, text: &str) {
+    pub fn draw_text_transformed(&mut self, font_id: FontId, size: f32, text: &str, x: f32, y: f32, color: Color, transform: Mat2x2) {
         let (units_per_em, ascender) = {
             let font = &self.fonts[font_id.0].font;
             (font.units_per_em().unwrap() as f32, font.ascender() as f32)
         };
         let scale = size / units_per_em;
-        let mut x = x;
-        let y = y + scale * ascender;
+        let mut pos = Vec2::new(x, y + scale * ascender);
         for c in text.chars() {
             if let Ok(glyph_id) = self.fonts[font_id.0].font.glyph_index(c) {
+                let transformed = transform * pos;
                 if let Some(&path) = self.fonts[font_id.0].glyphs.get(&glyph_id) {
-                    self.draw_path(x, y, scale, color, path);
+                    self.draw_path_transformed(path, transformed.x, transformed.y, color, scale * transform);
                 } else if let Ok(glyph) = self.fonts[font_id.0].font.glyph(glyph_id) {
                     let path = Self::build_glyph(&glyph).build(self);
                     self.fonts[font_id.0].glyphs.insert(glyph_id, path);
-                    self.draw_path(x, y, scale, color, path);
+                    self.draw_path_transformed(path, transformed.x, transformed.y, color, scale * transform);
                 };
 
-                x += scale * self.fonts[font_id.0].font.glyph_hor_metrics(glyph_id).unwrap().advance as f32;
+                pos.x += scale * self.fonts[font_id.0].font.glyph_hor_metrics(glyph_id).unwrap().advance as f32;
             }
         }
     }

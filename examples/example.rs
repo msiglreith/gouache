@@ -1,4 +1,4 @@
-use gouache::{Color, Scene, PathBuilder};
+use gouache::{Color, Scene, PathBuilder, Mat2x2};
 
 const FRAME: std::time::Duration = std::time::Duration::from_micros(1_000_000 / 60);
 
@@ -25,14 +25,20 @@ fn main() {
         .build(&mut scene);
 
     let mut size = 14.0;
+    let (mut left, mut right) = (false, false);
+    let mut angle = 0.0;
 
     let mut running = true;
     let mut now = std::time::Instant::now();
     while running {
         scene.clear(Color::rgba(0.1, 0.15, 0.2, 1.0));
         scene.begin_frame();
-        scene.draw_text(0.0, 0.0, size, font, Color::rgba(1.0, 1.0, 1.0, 1.0), "jackdaws love my big sphinx of quartz 1234567890");
-        scene.draw_path(100.0, 100.0, 50.0, Color::rgba(0.0, 1.0, 1.0, 1.0), path);
+
+        if left { angle += 0.01; } else if right { angle -= 0.01; }
+        scene.draw_text_transformed(font, size, "jackdaws love my big sphinx of quartz 1234567890", 0.0, 0.0, Color::rgba(1.0, 1.0, 1.0, 1.0), Mat2x2::rotate(angle));
+
+        scene.draw_path(path, 300.0, 150.0, Color::rgba(0.0, 1.0, 1.0, 1.0));
+
         scene.end_frame();
 
         context.swap_buffers().unwrap();
@@ -48,6 +54,28 @@ fn main() {
                         MouseWheel { delta, .. } => {
                             match delta {
                                 glutin::MouseScrollDelta::PixelDelta(position) => { size -= 0.1 * position.y as f32; }
+                                _ => {}
+                            }
+                        }
+                        KeyboardInput { input, .. } => {
+                            match input {
+                                glutin::KeyboardInput { virtual_keycode: Some(key), state, .. } => {
+                                    match key {
+                                        glutin::VirtualKeyCode::Left => {
+                                            match state {
+                                                glutin::ElementState::Pressed => { left = true; }
+                                                glutin::ElementState::Released => { left = false; }
+                                            }
+                                        }
+                                        glutin::VirtualKeyCode::Right => {
+                                            match state {
+                                                glutin::ElementState::Pressed => { right = true; }
+                                                glutin::ElementState::Released => { right = false; }
+                                            }
+                                        }
+                                        _ => {}
+                                    }
+                                }
                                 _ => {}
                             }
                         }

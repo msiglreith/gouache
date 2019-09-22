@@ -15,6 +15,11 @@ impl Vec2 {
     }
 
     #[inline]
+    pub fn cross(self, other: Vec2) -> f32 {
+        self.x * other.y - self.y * other.x
+    }
+
+    #[inline]
     pub fn distance(self, other: Vec2) -> f32 {
         (other - self).length()
     }
@@ -96,11 +101,15 @@ impl ops::MulAssign<f32> for Vec2 {
     }
 }
 
-/* stored as row-major */
 #[derive(Copy, Clone)]
-pub struct Mat2x2(pub [f32; 4]);
+pub struct Mat2x2([f32; 4]);
 
 impl Mat2x2 {
+    /* row-major order */
+    pub fn new(a: f32, b: f32, c: f32, d: f32) -> Mat2x2 {
+        Mat2x2([a, b, c, d])
+    }
+
     pub fn id() -> Mat2x2 {
         Mat2x2([1.0, 0.0, 0.0, 1.0])
     }
