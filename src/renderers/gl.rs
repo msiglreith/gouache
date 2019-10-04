@@ -1,29 +1,23 @@
 use std::ffi::{CStr, CString};
 use gl::types::{GLuint, GLint, GLchar, GLenum, GLvoid};
 
+use crate::renderer::*;
+
 macro_rules! offset {
     ($type:ty, $field:ident) => { &(*(0 as *const $type)).$field as *const _ as usize }
 }
 
-#[derive(Copy, Clone, Debug)]
-pub struct Vertex {
-    pub pos: [f32; 2],
-    pub col: [f32; 4],
-    pub uv: [f32; 2],
-    pub path: [u16; 2],
-}
-
-pub struct Renderer {
+pub struct GlRenderer {
     prog: Program,
     indices: Texture<u16>,
     vertices: Texture<[u16; 4]>,
 }
 
-impl Renderer {
-    pub fn new() -> Renderer {
+impl GlRenderer {
+    pub fn new() -> GlRenderer {
         let prog = Program::new(
-            &CString::new(include_bytes!("shader/vert.glsl") as &[u8]).unwrap(),
-            &CString::new(include_bytes!("shader/frag.glsl") as &[u8]).unwrap()).unwrap();
+            &CString::new(include_bytes!("../shader/vert.glsl") as &[u8]).unwrap(),
+            &CString::new(include_bytes!("../shader/frag.glsl") as &[u8]).unwrap()).unwrap();
 
         let indices = Texture::new(16384, 1, None);
         let vertices = Texture::new(16384, 1, None);
@@ -34,17 +28,19 @@ impl Renderer {
             gl::Enable(gl::FRAMEBUFFER_SRGB);
         }
 
-        Renderer { prog, indices, vertices }
+        GlRenderer { prog, indices, vertices }
     }
+}
 
-    pub fn clear(&mut self, col: [f32; 4]) {
+impl Renderer for GlRenderer {
+    fn clear(&mut self, col: [f32; 4]) {
         unsafe {
             gl::ClearColor(col[0], col[1], col[2], col[3]);
             gl::Clear(gl::COLOR_BUFFER_BIT);
         }
     }
 
-    pub fn draw(&mut self, vertices: &[Vertex], indices: &[u16]) {
+    fn draw(&mut self, vertices: &[Vertex], indices: &[u16]) {
         let vertex_array = VertexArray::new(vertices, indices);
         unsafe {
             gl::UseProgram(self.prog.id);
@@ -61,11 +57,11 @@ impl Renderer {
         }
     }
 
-    pub fn upload_indices(&mut self, index: u16, indices: &[u16]) {
+    fn upload_indices(&mut self, index: u16, indices: &[u16]) {
         self.indices.update(index as u32, 0, indices.len() as u32, 1, indices);
     }
 
-    pub fn upload_vertices(&mut self, index: u16, vertices: &[u16]) {
+    fn upload_vertices(&mut self, index: u16, vertices: &[u16]) {
         assert!(vertices.len() % 4 == 0);
         let texels: &[[u16; 4]] = unsafe {
             std::slice::from_raw_parts(vertices.as_ptr() as *const [u16; 4], vertices.len() / 4)

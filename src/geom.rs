@@ -1,7 +1,10 @@
 use std::ops;
 
 #[derive(Copy, Clone, Debug)]
-pub struct Vec2 { pub x: f32, pub y: f32 }
+pub struct Vec2 {
+    pub x: f32,
+    pub y: f32,
+}
 
 impl Vec2 {
     #[inline]
@@ -52,7 +55,10 @@ impl ops::Add for Vec2 {
     type Output = Vec2;
     #[inline]
     fn add(self, rhs: Vec2) -> Vec2 {
-        Vec2 { x: self.x + rhs.x, y: self.y + rhs.y }
+        Vec2 {
+            x: self.x + rhs.x,
+            y: self.y + rhs.y,
+        }
     }
 }
 
@@ -67,7 +73,10 @@ impl ops::Sub for Vec2 {
     type Output = Vec2;
     #[inline]
     fn sub(self, rhs: Vec2) -> Vec2 {
-        Vec2 { x: self.x - rhs.x, y: self.y - rhs.y }
+        Vec2 {
+            x: self.x - rhs.x,
+            y: self.y - rhs.y,
+        }
     }
 }
 
@@ -82,7 +91,10 @@ impl ops::Mul<f32> for Vec2 {
     type Output = Vec2;
     #[inline]
     fn mul(self, rhs: f32) -> Vec2 {
-        Vec2 { x: self.x * rhs, y: self.y * rhs }
+        Vec2 {
+            x: self.x * rhs,
+            y: self.y * rhs,
+        }
     }
 }
 
@@ -90,7 +102,10 @@ impl ops::Mul<Vec2> for f32 {
     type Output = Vec2;
     #[inline]
     fn mul(self, rhs: Vec2) -> Vec2 {
-        Vec2 { x: self * rhs.x, y: self * rhs.y }
+        Vec2 {
+            x: self * rhs.x,
+            y: self * rhs.y,
+        }
     }
 }
 
@@ -159,7 +174,10 @@ impl ops::Mul<Mat2x2> for f32 {
     #[inline]
     fn mul(self, rhs: Mat2x2) -> Mat2x2 {
         Mat2x2([
-            self * rhs.0[0], self * rhs.0[1], self * rhs.0[2], self * rhs.0[3],
+            self * rhs.0[0],
+            self * rhs.0[1],
+            self * rhs.0[2],
+            self * rhs.0[3],
         ])
     }
 }
