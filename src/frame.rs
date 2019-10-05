@@ -111,6 +111,21 @@ impl<'c, 'r> Frame<'c, 'r> {
         self.cache.glyphs = glyphs;
     }
 
+    pub fn draw_rect(&mut self, x: f32, y: f32, width: f32, height: f32, transform: Mat2x2, color: Color) {
+        if self.cache.rect.is_none() {
+            let path = PathBuilder::new()
+                .line_to(0.0, 1.0)
+                .line_to(1.0, 1.0)
+                .line_to(1.0, 0.0)
+                .build();
+            self.cache.rect = Some((self.cache.add_path(), path));
+        }
+
+        let (path_key, path) = self.cache.rect.take().unwrap();
+        self.draw_path(&path, path_key, Vec2::new(x, y), transform * Mat2x2::new(width, 0.0, 0.0, height), color);
+        self.cache.rect = Some((path_key, path));
+    }
+
     pub fn finish(self) {
         self.renderer.draw(&self.vertices, &self.indices);
     }
@@ -138,6 +153,7 @@ pub struct Cache {
     next_path_key: u32,
     glyphs: HashMap<(FontKey, GlyphKey), GlyphEntry>,
     next_font_key: u32,
+    rect: Option<(PathKey, Path)>,
     indices_free: u16,
     vertices_free: u16,
 }
@@ -149,6 +165,7 @@ impl Cache {
             next_path_key: 1,
             glyphs: HashMap::new(),
             next_font_key: 1,
+            rect: None,
             indices_free: 0,
             vertices_free: 0
         }

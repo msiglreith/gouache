@@ -49,6 +49,7 @@ fn main() {
 
         frame.draw_text(&font, font_key, &text, Vec2::new(0.0, 0.0), Mat2x2::scale(size) * Mat2x2::rotate(angle), Color::rgba(1.0, 1.0, 1.0, 1.0));
         frame.draw_path(&path, path_key, Vec2::new(300.0, 150.0), Mat2x2::scale(50.0), Color::rgba(0.0, 1.0, 1.0, 1.0));
+        frame.draw_rect(100.0, 100.0, 100.0, 50.0, Mat2x2::id(), Color::rgba(1.0, 0.0, 1.0, 1.0));
         frame.finish();
 
         context.swap_buffers().unwrap();
