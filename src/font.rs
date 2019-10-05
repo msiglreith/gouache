@@ -19,32 +19,27 @@ impl<'a> Font<'a> {
         ttf_parser::Font::from_data(bytes, 0).map(|font| Font { font, glyphs: HashMap::new() })
     }
 
-    pub fn get_glyph(&mut self, glyph: GlyphKey, cache: &mut Cache) -> &Path {
-        if !self.glyphs.contains_key(&glyph) {
-            use ttf_parser::OutlineBuilder;
+    pub fn build_glyph(&self, glyph: GlyphKey) -> Path {
+        use ttf_parser::OutlineBuilder;
 
-            struct Builder { path: PathBuilder }
-            impl OutlineBuilder for Builder {
-                fn move_to(&mut self, x: f32, y: f32) {
-                    self.path.move_to(x, -y);
-                }
-                fn line_to(&mut self, x: f32, y: f32) {
-                    self.path.line_to(x, -y);
-                }
-                fn quad_to(&mut self, x1: f32, y1: f32, x: f32, y: f32) {
-                    self.path.quadratic_to(x1, -y1, x, -y);
-                }
-                fn curve_to(&mut self, x1: f32, y1: f32, x2: f32, y2: f32, x: f32, y: f32) {}
-                fn close(&mut self) {}
+        struct Builder { path: PathBuilder }
+        impl OutlineBuilder for Builder {
+            fn move_to(&mut self, x: f32, y: f32) {
+                self.path.move_to(x, -y);
             }
-
-            let mut builder = Builder { path: PathBuilder::new() };
-            self.font.outline_glyph(GlyphId(glyph.0), &mut builder);
-
-            self.glyphs.insert(glyph, builder.path.build(cache));
+            fn line_to(&mut self, x: f32, y: f32) {
+                self.path.line_to(x, -y);
+            }
+            fn quad_to(&mut self, x1: f32, y1: f32, x: f32, y: f32) {
+                self.path.quadratic_to(x1, -y1, x, -y);
+            }
+            fn curve_to(&mut self, x1: f32, y1: f32, x2: f32, y2: f32, x: f32, y: f32) {}
+            fn close(&mut self) {}
         }
 
-        self.glyphs.get(&glyph).unwrap()
+        let mut builder = Builder { path: PathBuilder::new() };
+        self.font.outline_glyph(GlyphId(glyph.0), &mut builder);
+        builder.path.build()
     }
 
     pub fn layout(&self, text: &str, size: f32) -> TextLayout {

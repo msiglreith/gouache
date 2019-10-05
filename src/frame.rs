@@ -30,11 +30,17 @@ impl<'c, 'r> Frame<'c, 'r> {
         self.renderer.clear(color.to_linear_premul());
     }
 
-    pub fn draw_path(&mut self, path: &Path, position: Vec2, transform: Mat2x2, color: Color) {
-        let entry = if let Some(entry) = self.cache.get_path(path.key) {
+    pub fn draw_path(&mut self, path: &Path, path_key: PathKey, position: Vec2, transform: Mat2x2, color: Color) {
+        let entry = if let Some(&entry) = self.cache.paths.get(&path_key) {
             entry
         } else {
-            let entry = self.cache.place_path(path.key, path);
+            let entry = PathEntry {
+                indices: self.cache.indices_free,
+                vertices: self.cache.vertices_free,
+            };
+            self.cache.indices_free += path.indices.len() as u16;
+            self.cache.vertices_free += 2 * path.vertices.len() as u16;
+            self.cache.paths.insert(path_key, entry);
 
             let indices: Vec<u16> = path.indices.iter().map(|index| entry.vertices / 4 + *index as u16 / 2).collect();
             self.renderer.upload_indices(entry.indices, &indices);
@@ -83,14 +89,26 @@ impl<'c, 'r> Frame<'c, 'r> {
         self.indices.extend_from_slice(&[i, i + 1, i + 2, i, i + 2, i + 3]);
     }
 
-    pub fn draw_text(&mut self, font: &mut Font, text: &TextLayout, position: Vec2, transform: Mat2x2, color: Color) {
+    pub fn draw_text(&mut self, font: &Font, font_key: FontKey, text: &TextLayout, position: Vec2, transform: Mat2x2, color: Color) {
         let scaled_transform = text.scale * transform;
+        let mut glyphs = std::mem::replace(&mut self.cache.glyphs, HashMap::new());
         for glyph in text.glyphs.iter() {
-            let path = font.get_glyph(glyph.glyph_key, self.cache);
-            if path.indices.len() > 0 {
-                self.draw_path(path, position + transform * glyph.position, scaled_transform, color);            
+            let key = (font_key, glyph.glyph_key);
+            let entry = if let Some(entry) = glyphs.get(&key) {
+                entry
+            } else {
+                glyphs.insert(key, GlyphEntry {
+                    path: font.build_glyph(glyph.glyph_key),
+                    key: self.cache.add_path(),
+                });
+                glyphs.get(&key).unwrap()
+            };
+
+            if entry.path.indices.len() > 0 {
+                self.draw_path(&entry.path, entry.key, position + transform * glyph.position, scaled_transform, color);
             }
         }
+        self.cache.glyphs = glyphs;
     }
 
     pub fn finish(self) {
@@ -98,19 +116,27 @@ impl<'c, 'r> Frame<'c, 'r> {
     }
 }
 
-
 #[derive(Copy, Clone, PartialEq, Eq, Hash)]
 pub struct PathKey(u32);
 
+#[derive(Copy, Clone, PartialEq, Eq, Hash)]
+pub struct FontKey(u32);
+
 #[derive(Copy, Clone)]
-pub struct PathEntry {
-    pub indices: u16,
-    pub vertices: u16,
+struct PathEntry {
+    indices: u16,
+    vertices: u16,
+}
+
+struct GlyphEntry {
+    path: Path,
+    key: PathKey,
 }
 
 pub struct Cache {
     paths: HashMap<PathKey, PathEntry>,
     next_path_key: u32,
+    glyphs: HashMap<(FontKey, GlyphKey), GlyphEntry>,
     next_font_key: u32,
     indices_free: u16,
     vertices_free: u16,
@@ -120,8 +146,9 @@ impl Cache {
     pub fn new() -> Cache {
         Cache {
             paths: HashMap::new(),
-            next_path_key: 0,
-            next_font_key: 0,
+            next_path_key: 1,
+            glyphs: HashMap::new(),
+            next_font_key: 1,
             indices_free: 0,
             vertices_free: 0
         }
@@ -133,19 +160,10 @@ impl Cache {
         PathKey(path_key)
     }
 
-    pub fn get_path(&self, key: PathKey) -> Option<PathEntry> {
-        self.paths.get(&key).map(|entry| *entry)
-    }
-
-    pub fn place_path(&mut self, key: PathKey, path: &Path) -> PathEntry {
-        let entry = PathEntry {
-            indices: self.indices_free,
-            vertices: self.vertices_free,
-        };
-        self.indices_free += path.indices.len() as u16;
-        self.vertices_free += 2 * path.vertices.len() as u16;
-        self.paths.insert(key, entry);
-        entry
+    pub fn add_font(&mut self) -> FontKey {
+        let font_key = self.next_font_key;
+        self.next_font_key += 1;
+        FontKey(font_key)
     }
 }
 

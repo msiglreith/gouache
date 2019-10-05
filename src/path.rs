@@ -2,7 +2,6 @@ use crate::geom::*;
 use crate::frame::*;
 
 pub struct Path {
-    pub key: PathKey,
     pub offset: Vec2,
     pub size: Vec2,
     pub vertices: Vec<Vec2>,
@@ -168,7 +167,7 @@ impl PathBuilder {
         self.vertices.push(Vec2::new(0.0, 0.0));
     }
 
-    pub fn build(&mut self, cache: &mut Cache) -> Path {
+    pub fn build(&mut self) -> Path {
         self.close();
 
         let (mut min_x, mut max_x) = (std::f32::INFINITY, -std::f32::INFINITY);
@@ -190,7 +189,6 @@ impl PathBuilder {
         let size = Vec2::new(max_x - min_x, max_y - min_y);
 
         Path {
-            key: cache.add_path(),
             vertices: std::mem::replace(&mut self.vertices, Vec::new()),
             indices: std::mem::replace(&mut self.indices, Vec::new()),
             offset,
