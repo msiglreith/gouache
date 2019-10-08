@@ -54,13 +54,20 @@ impl<'a> Font<'a> {
             }
         }
 
-        TextLayout { scale, glyphs }
+        TextLayout {
+            scale,
+            glyphs,
+            width: position.x,
+            height: scale * (self.font.ascender() as f32 - self.font.descender() as f32),
+        }
     }
 }
 
 pub struct TextLayout {
     pub scale: f32,
     pub glyphs: Vec<Glyph>,
+    pub width: f32,
+    pub height: f32,
 }
 
 pub struct Glyph {
