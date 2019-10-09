@@ -1,11 +1,14 @@
 use crate::geom::*;
-use crate::frame::*;
+use crate::frame::PathKey;
+
+use std::cell::Cell;
 
 pub struct Path {
-    pub offset: Vec2,
-    pub size: Vec2,
-    pub vertices: Vec<Vec2>,
-    pub indices: Vec<usize>,
+    pub(crate) key: Cell<PathKey>,
+    pub(crate) offset: Vec2,
+    pub(crate) size: Vec2,
+    pub(crate) vertices: Vec<Vec2>,
+    pub(crate) indices: Vec<usize>,
 }
 
 pub struct PathBuilder {
@@ -189,6 +192,7 @@ impl PathBuilder {
         let size = Vec2::new(max_x - min_x, max_y - min_y);
 
         Path {
+            key: Cell::new(PathKey::NONE),
             vertices: std::mem::replace(&mut self.vertices, Vec::new()),
             indices: std::mem::replace(&mut self.indices, Vec::new()),
             offset,
