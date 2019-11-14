@@ -119,7 +119,7 @@ impl<'c, 'r> Frame<'c, 'r> {
         self.cache.glyphs = glyphs;
     }
 
-    pub fn draw_rect(&mut self, x: f32, y: f32, width: f32, height: f32, transform: Mat2x2, color: Color) {
+    pub fn draw_rect(&mut self, position: Vec2, dimensions: Vec2, transform: Mat2x2, color: Color) {
         if self.cache.rect.is_none() {
             self.cache.rect = Some(PathBuilder::new()
                 .line_to(0.0, 1.0)
@@ -129,7 +129,7 @@ impl<'c, 'r> Frame<'c, 'r> {
         }
 
         let path = self.cache.rect.take().unwrap();
-        self.draw_path(&path, Vec2::new(x, y), transform * Mat2x2::new(width, 0.0, 0.0, height), color);
+        self.draw_path(&path, position, transform * Mat2x2::new(dimensions.x, 0.0, 0.0, dimensions.y), color);
         self.cache.rect = Some(path);
     }
 
