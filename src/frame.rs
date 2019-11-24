@@ -95,15 +95,14 @@ impl<'c, 'r> Frame<'c, 'r> {
         self.indices.extend_from_slice(&[i, i + 1, i + 2, i, i + 2, i + 3]);
     }
 
-    pub fn draw_text(&mut self, font: &Font, text: &TextLayout, position: Vec2, transform: Mat2x2, color: Color) {
+    pub fn draw_text(&mut self, font: &Font, size: f32, text: &str, position: Vec2, transform: Mat2x2, color: Color) {
         if font.key.get() == FontKey::NONE {
             font.key.set(self.cache.add_font());
         }
         let font_key = font.key.get();
 
-        let scaled_transform = text.scale * transform;
         let mut glyphs = std::mem::replace(&mut self.cache.glyphs, HashMap::new());
-        for glyph in text.glyphs.iter() {
+        for glyph in font.layout(text, size) {
             let key = (font_key, glyph.glyph_key);
             let path = if let Some(path) = glyphs.get(&key) {
                 path
@@ -113,7 +112,7 @@ impl<'c, 'r> Frame<'c, 'r> {
             };
 
             if path.indices.len() > 0 {
-                self.draw_path(&path, position + transform * glyph.position, scaled_transform, color);
+                self.draw_path(&path, position + transform * glyph.position, glyph.scale * transform, color);
             }
         }
         self.cache.glyphs = glyphs;

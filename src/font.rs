@@ -50,35 +50,54 @@ impl<'a> Font<'a> {
         builder.path.build()
     }
 
-    pub fn layout(&self, text: &str, size: f32) -> TextLayout {
-        let mut glyphs = Vec::new();
-
+    pub fn measure(&self, text: &str, size: f32) -> (f32, f32) {
         let scale = size / self.font.units_per_em().unwrap() as f32;
-        let mut position = Vec2::new(0.0, scale * self.font.ascender() as f32);
+        let mut width = 0.0;
         for c in text.chars() {
             if let Ok(glyph_id) = self.font.glyph_index(c) {
-                glyphs.push(Glyph { position, glyph_key: GlyphKey(glyph_id.0) });
-                position.x += scale * self.font.glyph_hor_metrics(glyph_id).unwrap().advance as f32;
+                width += scale * self.font.glyph_hor_metrics(glyph_id).unwrap().advance as f32;
             }
         }
 
-        TextLayout {
+        (width, scale * (self.font.ascender() as f32 - self.font.descender() as f32))
+    }
+
+    pub fn layout<'f, 't>(&'f self, text: &'t str, size: f32) -> LayoutIter<'f, 't> {
+        let scale = size / self.font.units_per_em().unwrap() as f32;
+        LayoutIter {
+            font: self,
+            chars: text.chars(),
             scale,
-            glyphs,
-            width: position.x,
-            height: scale * (self.font.ascender() as f32 - self.font.descender() as f32),
+            position: Vec2::new(0.0, scale * self.font.ascender() as f32),
         }
     }
 }
 
-pub struct TextLayout {
-    pub scale: f32,
-    pub glyphs: Vec<Glyph>,
-    pub width: f32,
-    pub height: f32,
+pub struct LayoutIter<'f, 'c> {
+    font: &'f Font<'f>,
+    chars: std::str::Chars<'c>,
+    scale: f32,
+    position: Vec2,
+}
+
+impl<'f, 'c> Iterator for LayoutIter<'f, 'c> {
+    type Item = Glyph;
+
+    fn next(&mut self) -> Option<Glyph> {
+        while let Some(c) = self.chars.next() {
+            if let Ok(glyph_id) = self.font.font.glyph_index(c) {
+                let glyph = Glyph { position: self.position, scale: self.scale, glyph_key: GlyphKey(glyph_id.0) };
+                self.position.x += self.scale * self.font.font.glyph_hor_metrics(glyph_id).unwrap().advance as f32;
+                return Some(glyph);
+            }
+        }
+
+        None
+    }
 }
 
 pub struct Glyph {
     pub position: Vec2,
+    pub scale: f32,
     pub glyph_key: GlyphKey,
 }
