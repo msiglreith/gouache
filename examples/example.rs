@@ -2,6 +2,26 @@ use gouache::{Color, Vec2, Mat2x2, PathBuilder, Frame, Font, Cache, renderers::G
 
 const FRAME: std::time::Duration = std::time::Duration::from_micros(1_000_000 / 60);
 
+const TEXT: &'static str = "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor
+incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis
+nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.
+Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu
+fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in
+culpa qui officia deserunt mollit anim id est laborum.
+
+Curabitur pretium tincidunt lacus. Nulla gravida orci a odio. Nullam varius,
+turpis et commodo pharetra, est eros bibendum elit, nec luctus magna felis
+sollicitudin mauris. Integer in mauris eu nibh euismod gravida. Duis ac tellus
+et risus vulputate vehicula. Donec lobortis risus a elit. Etiam tempor. Ut
+ullamcorper, ligula eu tempor congue, eros est euismod turpis, id tincidunt
+sapien risus a quam. Maecenas fermentum consequat mi. Donec fermentum.
+Pellentesque malesuada nulla a mi. Duis sapien sem, aliquet nec, commodo eget,
+consequat quis, neque. Aliquam faucibus, elit ut dictum aliquet, felis nisl
+adipiscing sapien, sed malesuada diam lacus eget erat. Cras mollis scelerisque
+nunc. Nullam arcu. Aliquam consequat. Curabitur augue lorem, dapibus quis,
+laoreet et, pretium ac, nisi. Aenean magna nisl, mollis quis, molestie eu,
+feugiat in, orci. In hac habitasse platea dictumst.";
+
 fn main() {
     let mut events_loop = glutin::EventsLoop::new();
     let window_builder = glutin::WindowBuilder::new()
@@ -32,22 +52,25 @@ fn main() {
     let (mut left, mut right) = (false, false);
     let mut angle = 0.0;
 
+    let center = 0.5 * Vec2::new(800.0, 600.0);
+    let (width, height) = font.measure(TEXT, 14.0);
+    let text_center = 0.5 * Vec2::new(width, height);
+
     let mut running = true;
     let mut now = std::time::Instant::now();
     while running {
         let mut frame = Frame::new(&mut cache, &mut renderer, 800.0, 600.0);
 
-        frame.clear(Color::rgba(0.1, 0.15, 0.2, 1.0));
+        frame.clear(Color::rgba(0.784, 0.804, 0.824, 1.0));
 
         if left {
-            angle += 0.01;
+            angle += 0.05;
         } else if right {
-            angle -= 0.01;
+            angle -= 0.05;
         }
 
-        frame.draw_text(&font, &text, Vec2::new(0.0, 0.0), Mat2x2::scale(size) * Mat2x2::rotate(angle), Color::rgba(1.0, 1.0, 1.0, 1.0));
-        frame.draw_path(&path, Vec2::new(300.0, 150.0), Mat2x2::scale(50.0), Color::rgba(0.0, 1.0, 1.0, 1.0));
-        frame.draw_rect(Vec2::new(100.0, 100.0), Vec2::new(100.0, 50.0), Mat2x2::id(), Color::rgba(1.0, 0.0, 1.0, 1.0));
+        let transform = Mat2x2::scale(size) * Mat2x2::rotate(angle);
+        frame.draw_text(&font, 14.0, TEXT, center - transform * text_center, transform, Color::rgba(0.1, 0.05, 0.1, 1.0));
         frame.finish();
 
         context.swap_buffers().unwrap();
@@ -71,7 +94,7 @@ fn main() {
                             state,
                             ..
                         } => match key {
-                            glutin::VirtualKeyCode::Left => match state {
+                            glutin::VirtualKeyCode::A => match state {
                                 glutin::ElementState::Pressed => {
                                     left = true;
                                 }
@@ -79,7 +102,7 @@ fn main() {
                                     left = false;
                                 }
                             },
-                            glutin::VirtualKeyCode::Right => match state {
+                            glutin::VirtualKeyCode::D => match state {
                                 glutin::ElementState::Pressed => {
                                     right = true;
                                 }
