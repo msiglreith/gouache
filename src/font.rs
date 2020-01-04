@@ -52,23 +52,31 @@ impl<'a> Font<'a> {
 
     pub fn measure(&self, text: &str, size: f32) -> (f32, f32) {
         let scale = size / self.font.units_per_em().unwrap() as f32;
-        let mut width = 0.0;
+        let mut width: f32 = 0.0;
+        let mut line_width: f32 = 0.0;
+        let mut lines: usize = 0;
         for c in text.chars() {
-            if let Ok(glyph_id) = self.font.glyph_index(c) {
-                width += scale * self.font.glyph_hor_metrics(glyph_id).unwrap().advance as f32;
+            if c == '\n' {
+                width = width.max(line_width);
+                line_width = 0.0;
+                lines += 1;
+            } else if let Ok(glyph_id) = self.font.glyph_index(c) {
+                line_width += scale * self.font.glyph_hor_metrics(glyph_id).unwrap().advance as f32;
             }
         }
 
-        (width, scale * (self.font.ascender() as f32 - self.font.descender() as f32))
+        (width, scale * (lines as f32 * self.font.height() as f32 + lines.saturating_sub(1) as f32 * self.font.line_gap() as f32))
     }
 
     pub fn layout<'f, 't>(&'f self, text: &'t str, size: f32) -> LayoutIter<'f, 't> {
         let scale = size / self.font.units_per_em().unwrap() as f32;
+        let origin = Vec2::new(0.0, scale * self.font.ascender() as f32);
         LayoutIter {
             font: self,
             chars: text.chars(),
             scale,
-            position: Vec2::new(0.0, scale * self.font.ascender() as f32),
+            origin,
+            position: origin,
         }
     }
 }
@@ -77,6 +85,7 @@ pub struct LayoutIter<'f, 'c> {
     font: &'f Font<'f>,
     chars: std::str::Chars<'c>,
     scale: f32,
+    origin: Vec2,
     position: Vec2,
 }
 
@@ -85,7 +94,10 @@ impl<'f, 'c> Iterator for LayoutIter<'f, 'c> {
 
     fn next(&mut self) -> Option<Glyph> {
         while let Some(c) = self.chars.next() {
-            if let Ok(glyph_id) = self.font.font.glyph_index(c) {
+            if c == '\n' {
+                self.position.x = self.origin.x;
+                self.position.y += self.scale * (self.font.font.height() + self.font.font.line_gap()) as f32;
+            } else if let Ok(glyph_id) = self.font.font.glyph_index(c) {
                 let glyph = Glyph { position: self.position, scale: self.scale, glyph_key: GlyphKey(glyph_id.0) };
                 self.position.x += self.scale * self.font.font.glyph_hor_metrics(glyph_id).unwrap().advance as f32;
                 return Some(glyph);
