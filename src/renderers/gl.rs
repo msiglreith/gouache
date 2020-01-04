@@ -144,7 +144,7 @@ impl VertexAttribs for Vertex {
         gl::EnableVertexAttribArray(2);
         gl::VertexAttribPointer(2, 2, gl::FLOAT, gl::FALSE, std::mem::size_of::<Vertex>() as GLint, offset!(Vertex, uv) as *const GLvoid);
         gl::EnableVertexAttribArray(3);
-        gl::VertexAttribIPointer(3, 2, gl::UNSIGNED_SHORT, std::mem::size_of::<Vertex>() as GLint, offset!(Vertex, path) as *const GLvoid);
+        gl::VertexAttribIPointer(3, 3, gl::UNSIGNED_SHORT, std::mem::size_of::<Vertex>() as GLint, offset!(Vertex, path) as *const GLvoid);
     }
 }
 

@@ -5,7 +5,7 @@ uniform sampler2D points;
 
 in vec4 v_col;
 in vec2 v_uv;
-flat in uvec2 v_path;
+flat in uvec3 v_path;
 
 out vec4 f_col;
 
@@ -16,7 +16,7 @@ void main() {
 
     float alpha = 0.0;
     for (uint i = v_path.x; i < v_path.y; i++) {
-        uint index = uint(texelFetch(indices, ivec2(int(i), 0), 0).x);
+        uint index = v_path.z + uint(texelFetch(indices, ivec2(int(i), 0), 0).x);
         vec4 t1 = texelFetch(points, ivec2(index, 0), 0);
         vec4 t2 = texelFetch(points, ivec2(index + 1u, 0), 0);
         vec2 p0 = t1.xy;

@@ -10,5 +10,5 @@ pub struct Vertex {
     pub pos: [f32; 2],
     pub col: [f32; 4],
     pub uv: [f32; 2],
-    pub path: [u16; 2],
+    pub path: [u16; 3],
 }

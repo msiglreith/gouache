@@ -45,20 +45,11 @@ impl<'c, 'r> Frame<'c, 'r> {
                 vertices: self.cache.vertices_free,
             };
             self.cache.indices_free += path.indices.len() as u16;
-            self.cache.vertices_free += 2 * path.vertices.len() as u16;
+            self.cache.vertices_free += path.vertices.len() as u16;
             self.cache.paths.insert(path_key, entry);
 
-            let indices: Vec<u16> = path.indices.iter().map(|index| entry.vertices / 4 + *index as u16 / 2).collect();
-            self.renderer.upload_indices(entry.indices, &indices);
-
-            let mut vertices = Vec::with_capacity(path.vertices.len() * 2);
-            for vertex in path.vertices.iter() {
-                vertices.extend_from_slice(&[
-                    (((vertex.x - path.offset.x) / path.size.x) * std::u16::MAX as f32).round() as u16,
-                    (((vertex.y - path.offset.y) / path.size.y) * std::u16::MAX as f32).round() as u16,
-                ]);
-            }
-            self.renderer.upload_vertices(entry.vertices, &vertices);
+            self.renderer.upload_indices(entry.indices, &path.indices);
+            self.renderer.upload_vertices(entry.vertices, &path.vertices);
 
             entry
         };
@@ -83,7 +74,7 @@ impl<'c, 'r> Frame<'c, 'r> {
             (p - d1 + v2 + d2).pixel_to_ndc(self.width, self.height),
         ];
         let col = color.to_linear_premul();
-        let path = [entry.indices, entry.indices + path.indices.len() as u16];
+        let path = [entry.indices, entry.indices + path.indices.len() as u16, entry.vertices / 4];
 
         let i = self.vertices.len() as u16;
         self.vertices.extend_from_slice(&[

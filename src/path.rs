@@ -7,15 +7,15 @@ pub struct Path {
     pub(crate) key: Cell<PathKey>,
     pub(crate) offset: Vec2,
     pub(crate) size: Vec2,
-    pub(crate) vertices: Vec<Vec2>,
-    pub(crate) indices: Vec<usize>,
+    pub(crate) indices: Vec<u16>,
+    pub(crate) vertices: Vec<u16>,
 }
 
 pub struct PathBuilder {
     first: Vec2,
     last: Vec2,
-    vertices: Vec<Vec2>,
     indices: Vec<usize>,
+    vertices: Vec<Vec2>,
 }
 
 impl PathBuilder {
@@ -23,8 +23,8 @@ impl PathBuilder {
         PathBuilder {
             first: Vec2::new(0.0, 0.0),
             last: Vec2::new(0.0, 0.0),
-            vertices: Vec::new(),
             indices: Vec::new(),
+            vertices: Vec::new(),
         }
     }
 
@@ -191,12 +191,21 @@ impl PathBuilder {
         let offset = Vec2::new(min_x, min_y);
         let size = Vec2::new(max_x - min_x, max_y - min_y);
 
+        let indices: Vec<u16> = self.indices.iter().map(|index| *index as u16 / 2).collect();
+        let mut vertices = Vec::with_capacity(self.vertices.len() * 2);
+        for vertex in self.vertices.iter() {
+            vertices.extend_from_slice(&[
+                (((vertex.x - offset.x) / size.x) * std::u16::MAX as f32).round() as u16,
+                (((vertex.y - offset.y) / size.y) * std::u16::MAX as f32).round() as u16,
+            ]);
+        }
+
         Path {
             key: Cell::new(PathKey::NONE),
-            vertices: std::mem::replace(&mut self.vertices, Vec::new()),
-            indices: std::mem::replace(&mut self.indices, Vec::new()),
             offset,
             size,
+            indices,
+            vertices,
         }
     }
 }
