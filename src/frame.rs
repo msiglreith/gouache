@@ -43,34 +43,22 @@ impl<'c, 'r> Frame<'c, 'r> {
             index
         };
 
-        let p = position + transform * Vec2::new(path.offset.x, path.offset.y);
-        let v1 = transform * Vec2::new(path.size.x, 0.0);
-        let v2 = transform * Vec2::new(0.0, path.size.y);
-        let n1 = v1.normalized();
-        let n2 = v2.normalized();
-
-        let d = 0.5 / n1.cross(n2).abs();
-        let d1 = d * n1;
-        let d2 = d * n2;
-
-        let dx = d / v1.length();
-        let dy = d / v2.length();
-
+        let quad = path.get_quad(position, transform);
         let positions = [
-            (p - d1 - d2).pixel_to_ndc(self.width, self.height),
-            (p + v1 + d1 - d2).pixel_to_ndc(self.width, self.height),
-            (p + v1 + d1 + v2 + d2).pixel_to_ndc(self.width, self.height),
-            (p - d1 + v2 + d2).pixel_to_ndc(self.width, self.height),
+            quad.vertices[0].pixel_to_ndc(self.width, self.height),
+            quad.vertices[1].pixel_to_ndc(self.width, self.height),
+            quad.vertices[2].pixel_to_ndc(self.width, self.height),
+            quad.vertices[3].pixel_to_ndc(self.width, self.height),
         ];
         let col = color.to_linear_premul();
         let path = [index, index + path.buffer.len() as u16];
 
         let i = self.vertices.len() as u16;
         self.vertices.extend_from_slice(&[
-            Vertex { pos: [positions[0].x, positions[0].y], col, uv: [-dx, -dy], path },
-            Vertex { pos: [positions[1].x, positions[1].y], col, uv: [1.0 + dx, -dy], path },
-            Vertex { pos: [positions[2].x, positions[2].y], col, uv: [1.0 + dx, 1.0 + dy], path },
-            Vertex { pos: [positions[3].x, positions[3].y], col, uv: [-dx, 1.0 + dy], path },
+            Vertex { pos: [positions[0].x, positions[0].y], col, uv: [quad.uv[0].x, quad.uv[0].y], path },
+            Vertex { pos: [positions[1].x, positions[1].y], col, uv: [quad.uv[1].x, quad.uv[1].y], path },
+            Vertex { pos: [positions[2].x, positions[2].y], col, uv: [quad.uv[2].x, quad.uv[2].y], path },
+            Vertex { pos: [positions[3].x, positions[3].y], col, uv: [quad.uv[3].x, quad.uv[3].y], path },
         ]);
         self.indices.extend_from_slice(&[i, i + 1, i + 2, i, i + 2, i + 3]);
     }

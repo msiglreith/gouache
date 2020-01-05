@@ -94,6 +94,43 @@ impl Path {
     }
 }
 
+impl Path {
+    pub fn get_quad(&self, position: Vec2, transform: Mat2x2) -> Quad {
+        let p = position + transform * Vec2::new(self.offset.x, self.offset.y);
+        let v1 = transform * Vec2::new(self.size.x, 0.0);
+        let v2 = transform * Vec2::new(0.0, self.size.y);
+        let n1 = v1.normalized();
+        let n2 = v2.normalized();
+
+        let d = 0.5 / n1.cross(n2).abs();
+        let d1 = d * n1;
+        let d2 = d * n2;
+
+        let dx = d / v1.length();
+        let dy = d / v2.length();
+
+        Quad {
+            vertices: [
+                p - d1 - d2,
+                p + v1 + d1 - d2,
+                p + v1 + d1 + v2 + d2,
+                p - d1 + v2 + d2,
+            ],
+            uv: [
+                Vec2::new(-dx, -dy),
+                Vec2::new(1.0 + dx, -dy),
+                Vec2::new(1.0 + dx, 1.0 + dy),
+                Vec2::new(-dx, 1.0 + dy),
+            ],
+        }
+    }
+}
+
+pub struct Quad {
+    pub vertices: [Vec2; 4],
+    pub uv: [Vec2; 4],
+}
+
 pub struct PathBuilder {
     commands: Vec<Command>,
     first: Vec2,
