@@ -15,8 +15,11 @@ void main() {
 
     vec2 p0 = vec2(0.0, 0.0);
     float alpha = 0.0;
+    vec4 segment;
+    vec4 next_segment = texelFetch(paths, ivec2(v_path.x, 0), 0);
     for (uint i = v_path.x; i < v_path.y; i++) {
-        vec4 segment = texelFetch(paths, ivec2(int(i), 0), 0);
+        segment = next_segment;
+        next_segment = texelFetch(paths, ivec2(int(i + 1u), 0), 0);
         vec2 p1 = segment.xy;
         vec2 p2 = segment.zw;
 
