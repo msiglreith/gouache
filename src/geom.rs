@@ -43,6 +43,22 @@ impl Vec2 {
     }
 
     #[inline]
+    pub fn min(self, other: Vec2) -> Vec2 {
+        Vec2 {
+            x: self.x.min(other.x),
+            y: self.y.min(other.y),
+        }
+    }
+
+    #[inline]
+    pub fn max(self, other: Vec2) -> Vec2 {
+        Vec2 {
+            x: self.x.max(other.x),
+            y: self.y.max(other.y),
+        }
+    }
+
+    #[inline]
     pub fn pixel_to_ndc(self, screen_width: f32, screen_height: f32) -> Vec2 {
         Vec2 {
             x: 2.0 * (self.x / screen_width as f32 - 0.5),

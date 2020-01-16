@@ -7,29 +7,33 @@ pub struct Path {
     pub(crate) key: Cell<PathKey>,
     pub(crate) offset: Vec2,
     pub(crate) size: Vec2,
-    pub(crate) indices: Vec<u16>,
-    pub(crate) vertices: Vec<u16>,
+    pub(crate) commands: Vec<[u16; 4]>,
+}
+
+#[derive(Copy, Clone)]
+enum Command {
+    Move(Vec2),
+    Quad(Vec2, Vec2),
 }
 
 pub struct PathBuilder {
+    commands: Vec<Command>,
     first: Vec2,
     last: Vec2,
-    indices: Vec<usize>,
-    vertices: Vec<Vec2>,
 }
 
 impl PathBuilder {
     pub fn new() -> PathBuilder {
         PathBuilder {
+            commands: Vec::new(),
             first: Vec2::new(0.0, 0.0),
             last: Vec2::new(0.0, 0.0),
-            indices: Vec::new(),
-            vertices: Vec::new(),
         }
     }
 
     pub fn move_to(&mut self, x: f32, y: f32) -> &mut Self {
         self.close();
+        self.commands.push(Command::Move(Vec2::new(x, y)));
         self.first = Vec2::new(x, y);
         self.last = Vec2::new(x, y);
         self
@@ -37,20 +41,8 @@ impl PathBuilder {
 
     pub fn line_to(&mut self, x: f32, y: f32) -> &mut Self {
         let point = Vec2::new(x, y);
-
-        if self.last.y == point.y {
-            self.vertices.push(self.last);
-            self.vertices.push(Vec2::new(0.0, 0.0));
-            self.last = point;
-            return self;
-        }
-
-        self.indices.push(self.vertices.len());
-
-        self.vertices.push(self.last);
-        self.vertices.push(0.5 * (self.last + point));
+        self.commands.push(Command::Quad(0.5 * (self.last + point), point));
         self.last = point;
-
         self
     }
 
@@ -91,23 +83,18 @@ impl PathBuilder {
                 let (p1, p2, p3, p4, p5) = split_at(p1, p2, p3, split1);
                 let (p3, p4, p5, p6, p7) = split_at(p3, p4, p5, (split2 - split1) / (1.0 - split1));
 
-                let i = self.vertices.len();
-                self.indices.extend_from_slice(&[i, i + 2, i + 4]);
-                self.vertices.extend_from_slice(&[p1, p2, p3, p4, p5, p6]);
-                self.last = p7;
+                self.commands.push(Command::Quad(p2, p3));
+                self.commands.push(Command::Quad(p4, p5));
+                self.commands.push(Command::Quad(p6, p7));
             }
             (Some(split), None) | (None, Some(split)) => {
                 let (p1, p2, p3, p4, p5) = split_at(p1, p2, p3, split);
 
-                let i = self.vertices.len();
-                self.indices.extend_from_slice(&[i, i + 2]);
-                self.vertices.extend_from_slice(&[p1, p2, p3, p4]);
-                self.last = p5;
+                self.commands.push(Command::Quad(p2, p3));
+                self.commands.push(Command::Quad(p4, p5));
             }
             (None, None) => {
-                self.indices.push(self.vertices.len());
-                self.vertices.extend_from_slice(&[p1, p2]);
-                self.last = p3;
+                self.commands.push(Command::Quad(p2, p3));
             }
         }
 
@@ -162,50 +149,65 @@ impl PathBuilder {
     }
 
     fn close(&mut self) {
+        if let Some(Command::Move(_)) = self.commands.last() {
+            self.commands.pop();
+        }
+
         if self.first.distance(self.last) > 1.0e-6 {
             self.line_to(self.first.x, self.first.y);
         }
-
-        self.vertices.push(self.last);
-        self.vertices.push(Vec2::new(0.0, 0.0));
     }
 
     pub fn build(&mut self) -> Path {
         self.close();
 
-        let (mut min_x, mut max_x) = (std::f32::INFINITY, -std::f32::INFINITY);
-        let (mut min_y, mut max_y) = (std::f32::INFINITY, -std::f32::INFINITY);
-        for i in self.indices.iter() {
-            for p in &self.vertices[*i .. *i + 3] {
-                min_x = min_x.min(p.x);
-                max_x = max_x.max(p.x);
-                min_y = min_y.min(p.y);
-                max_y = max_y.max(p.y);
+        let mut min = Vec2::new(std::f32::INFINITY, std::f32::INFINITY);
+        let mut max = Vec2::new(-std::f32::INFINITY, -std::f32::INFINITY);
+        for command in self.commands.iter() {
+            match *command {
+                Command::Move(p) => {
+                    min = min.min(p);
+                    max = max.max(p);
+                }
+                Command::Quad(p1, p2) => {
+                    min = min.min(p1).min(p2);
+                    max = max.max(p1).max(p2);
+                }
             }
         }
-        if !min_x.is_finite() { min_x = 0.0; }
-        if !max_x.is_finite() { max_x = 0.0; }
-        if !min_y.is_finite() { min_y = 0.0; }
-        if !max_y.is_finite() { max_y = 0.0; }
+        if !min.x.is_finite() { min.x = 0.0; }
+        if !max.x.is_finite() { max.x = 0.0; }
+        if !min.y.is_finite() { min.y = 0.0; }
+        if !max.y.is_finite() { max.y = 0.0; }
 
-        let offset = Vec2::new(min_x, min_y);
-        let size = Vec2::new(max_x - min_x, max_y - min_y);
+        let offset = min;
+        let size = max - min;
 
-        let indices: Vec<u16> = self.indices.iter().map(|index| *index as u16 / 2).collect();
-        let mut vertices = Vec::with_capacity(self.vertices.len() * 2);
-        for vertex in self.vertices.iter() {
-            vertices.extend_from_slice(&[
-                (((vertex.x - offset.x) / size.x) * std::u16::MAX as f32).round() as u16,
-                (((vertex.y - offset.y) / size.y) * std::u16::MAX as f32).round() as u16,
-            ]);
+        fn convert(vertex: Vec2, offset: Vec2, size: Vec2) -> (u16, u16) {
+            let scaled = (std::u16::MAX - 1) as f32 * Vec2::new((vertex.x - offset.x) / size.x, (vertex.y - offset.y) / size.y);
+            (scaled.x.round() as u16 + 1, scaled.y.round() as u16 + 1)
+        }
+
+        let mut commands = Vec::with_capacity(self.commands.len());
+        for command in self.commands.iter() {
+            match *command {
+                Command::Move(p) => {
+                    let (x, y) = convert(p, offset, size);
+                    commands.push([0, 0, x, y]);
+                }
+                Command::Quad(p1, p2) => {
+                    let (x1, y1) = convert(p1, offset, size);
+                    let (x2, y2) = convert(p2, offset, size);
+                    commands.push([x1, y1, x2, y2]);
+                }
+            }
         }
 
         Path {
             key: Cell::new(PathKey::NONE),
             offset,
             size,
-            indices,
-            vertices,
+            commands,
         }
     }
 }

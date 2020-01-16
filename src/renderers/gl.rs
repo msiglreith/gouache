@@ -9,8 +9,7 @@ macro_rules! offset {
 
 pub struct GlRenderer {
     prog: Program,
-    indices: Texture<u16>,
-    vertices: Texture<[u16; 4]>,
+    paths: Texture<[u16; 4]>,
 }
 
 impl GlRenderer {
@@ -19,8 +18,7 @@ impl GlRenderer {
             &CString::new(include_bytes!("../shader/vert.glsl") as &[u8]).unwrap(),
             &CString::new(include_bytes!("../shader/frag.glsl") as &[u8]).unwrap()).unwrap();
 
-        let indices = Texture::new(16384, 1, None);
-        let vertices = Texture::new(16384, 1, None);
+        let paths = Texture::new(16384, 1, None);
 
         unsafe {
             gl::BlendFunc(gl::ONE, gl::ONE_MINUS_SRC_ALPHA);
@@ -28,7 +26,7 @@ impl GlRenderer {
             gl::Enable(gl::FRAMEBUFFER_SRGB);
         }
 
-        GlRenderer { prog, indices, vertices }
+        GlRenderer { prog, paths }
     }
 }
 
@@ -41,32 +39,38 @@ impl Renderer for GlRenderer {
     }
 
     fn draw(&mut self, vertices: &[Vertex], indices: &[u16]) {
+        let mut query: u32 = 0;
+        unsafe {
+            gl::GenQueries(1, &mut query);
+            gl::BeginQuery(gl::TIME_ELAPSED, query);
+        }
+
         let vertex_array = VertexArray::new(vertices, indices);
         unsafe {
             gl::UseProgram(self.prog.id);
 
             gl::ActiveTexture(gl::TEXTURE0);
-            gl::BindTexture(gl::TEXTURE_2D, self.indices.id);
+            gl::BindTexture(gl::TEXTURE_2D, self.paths.id);
             gl::Uniform1i(0, 0);
-
-            gl::ActiveTexture(gl::TEXTURE1);
-            gl::BindTexture(gl::TEXTURE_2D, self.vertices.id);
-            gl::Uniform1i(1, 1);
 
             gl::DrawElements(gl::TRIANGLES, vertex_array.count, gl::UNSIGNED_SHORT, 0 as *const GLvoid);
         }
+
+        let mut elapsed: u64 = 0;
+        unsafe {
+            gl::EndQuery(gl::TIME_ELAPSED);
+            let mut available: i32 = 0;
+            while available == 0 {
+                gl::GetQueryObjectiv(query, gl::QUERY_RESULT_AVAILABLE, &mut available);
+            }
+            gl::GetQueryObjectui64v(query, gl::QUERY_RESULT, &mut elapsed);
+        }
+
+        println!("{}", elapsed);
     }
 
-    fn upload_indices(&mut self, index: u16, indices: &[u16]) {
-        self.indices.update(index as u32, 0, indices.len() as u32, 1, indices);
-    }
-
-    fn upload_vertices(&mut self, index: u16, vertices: &[u16]) {
-        assert!(vertices.len() % 4 == 0);
-        let texels: &[[u16; 4]] = unsafe {
-            std::slice::from_raw_parts(vertices.as_ptr() as *const [u16; 4], vertices.len() / 4)
-        };
-        self.vertices.update(index as u32 / 4, 0, texels.len() as u32, 1, texels);
+    fn upload(&mut self, index: u16, paths: &[[u16; 4]]) {
+        self.paths.update(index as u32, 0, paths.len() as u32, 1, paths);
     }
 }
 
@@ -144,7 +148,7 @@ impl VertexAttribs for Vertex {
         gl::EnableVertexAttribArray(2);
         gl::VertexAttribPointer(2, 2, gl::FLOAT, gl::FALSE, std::mem::size_of::<Vertex>() as GLint, offset!(Vertex, uv) as *const GLvoid);
         gl::EnableVertexAttribArray(3);
-        gl::VertexAttribIPointer(3, 3, gl::UNSIGNED_SHORT, std::mem::size_of::<Vertex>() as GLint, offset!(Vertex, path) as *const GLvoid);
+        gl::VertexAttribIPointer(3, 2, gl::UNSIGNED_SHORT, std::mem::size_of::<Vertex>() as GLint, offset!(Vertex, path) as *const GLvoid);
     }
 }
 
@@ -193,12 +197,6 @@ trait Texel {
     const INTERNAL_FORMAT: GLint;
     const FORMAT: GLenum;
     const TYPE: GLenum;
-}
-
-impl Texel for u16 {
-    const INTERNAL_FORMAT: GLint = gl::R16UI as GLint;
-    const FORMAT: GLenum = gl::RED_INTEGER;
-    const TYPE: GLenum = gl::UNSIGNED_SHORT;
 }
 
 impl Texel for [u16; 4] {
