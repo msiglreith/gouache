@@ -38,6 +38,7 @@ fn main() {
     let mut renderer = GlRenderer::new();
 
     let mut font = Font::from_bytes(include_bytes!("../res/SourceSansPro-Regular.ttf")).unwrap();
+    let font_key = cache.add_font();
 
     let path = PathBuilder::new()
         .move_to(0.5, 1.0)
@@ -45,6 +46,7 @@ fn main() {
         .line_to(0.5, 0.0)
         .line_to(0.0, 0.5)
         .build();
+    let path_key = cache.add_path();
 
     let text = font.layout("jackdaws love my big sphinx of quartz 1234567890", 14.0);
 
@@ -70,7 +72,7 @@ fn main() {
         }
 
         let transform = Mat2x2::scale(size) * Mat2x2::rotate(angle);
-        frame.draw_text(&font, 14.0, TEXT, center - transform * text_center, transform, Color::rgba(0.1, 0.05, 0.1, 1.0));
+        frame.draw_text(&font, font_key, 14.0, TEXT, center - transform * text_center, transform, Color::rgba(0.1, 0.05, 0.1, 1.0));
         frame.finish();
 
         context.swap_buffers().unwrap();

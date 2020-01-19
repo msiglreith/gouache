@@ -1,14 +1,11 @@
 use crate::geom::*;
-use crate::frame::PathKey;
-
-use std::cell::Cell;
+use crate::frame::*;
 
 pub struct Path {
-    pub(crate) key: Cell<PathKey>,
-    pub(crate) offset: Vec2,
-    pub(crate) size: Vec2,
-    pub(crate) indices: Vec<u16>,
-    pub(crate) vertices: Vec<u16>,
+    pub offset: Vec2,
+    pub size: Vec2,
+    pub indices: Vec<u16>,
+    pub vertices: Vec<u16>,
 }
 
 pub struct PathBuilder {
@@ -201,7 +198,6 @@ impl PathBuilder {
         }
 
         Path {
-            key: Cell::new(PathKey::NONE),
             offset,
             size,
             indices,

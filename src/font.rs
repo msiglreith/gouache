@@ -1,14 +1,12 @@
 use crate::geom::*;
 use crate::path::*;
-use crate::frame::FontKey;
+use crate::frame::Cache;
 
-use std::cell::Cell;
 use std::collections::HashMap;
 pub use ttf_parser::Error as FontError;
 use ttf_parser::GlyphId;
 
 pub struct Font<'a> {
-    pub(crate) key: Cell<FontKey>,
     font: ttf_parser::Font<'a>,
     glyphs: HashMap<GlyphKey, Path>,
 }
@@ -18,13 +16,7 @@ pub struct GlyphKey(u16);
 
 impl<'a> Font<'a> {
     pub fn from_bytes(bytes: &'a [u8]) -> Result<Font<'a>, FontError> {
-        ttf_parser::Font::from_data(bytes, 0).map(|font| {
-            Font {
-                key: Cell::new(FontKey::NONE),
-                font,
-                glyphs: HashMap::new(),
-            }
-        })
+        ttf_parser::Font::from_data(bytes, 0).map(|font| Font { font, glyphs: HashMap::new() })
     }
 
     pub fn build_glyph(&self, glyph: GlyphKey) -> Path {
