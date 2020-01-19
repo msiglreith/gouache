@@ -31,21 +31,16 @@ impl<'c, 'r> Frame<'c, 'r> {
     }
 
     pub fn draw_path(&mut self, path: &Path, path_key: PathKey, position: Vec2, transform: Mat2x2, color: Color) {
-        let entry = if let Some(&entry) = self.cache.paths.get(&path_key) {
-            entry
+        let index = if let Some(&index) = self.cache.paths.get(&path_key) {
+            index
         } else {
-            let entry = PathEntry {
-                indices: self.cache.indices_free,
-                vertices: self.cache.vertices_free,
-            };
-            self.cache.indices_free += path.indices.len() as u16;
-            self.cache.vertices_free += path.vertices.len() as u16;
-            self.cache.paths.insert(path_key, entry);
+            let index = self.cache.paths_free;
+            self.cache.paths_free += path.commands.len() as u16;
+            self.cache.paths.insert(path_key, index);
 
-            self.renderer.upload_indices(entry.indices, &path.indices);
-            self.renderer.upload_vertices(entry.vertices, &path.vertices);
+            self.renderer.upload(index, &path.commands);
 
-            entry
+            index
         };
 
         let p = position + transform * Vec2::new(path.offset.x, path.offset.y);
@@ -68,7 +63,7 @@ impl<'c, 'r> Frame<'c, 'r> {
             (p - d1 + v2 + d2).pixel_to_ndc(self.width, self.height),
         ];
         let col = color.to_linear_premul();
-        let path = [entry.indices, entry.indices + path.indices.len() as u16, entry.vertices / 4];
+        let path = [index, index + path.commands.len() as u16];
 
         let i = self.vertices.len() as u16;
         self.vertices.extend_from_slice(&[
@@ -94,7 +89,7 @@ impl<'c, 'r> Frame<'c, 'r> {
                 glyphs.get(&key).unwrap()
             };
 
-            if entry.path.indices.len() > 0 {
+            if entry.path.commands.len() > 0 {
                 self.draw_path(&entry.path, entry.key, position + transform * glyph.position, glyph.scale * transform, color);
             }
         }
@@ -139,13 +134,12 @@ struct GlyphEntry {
 }
 
 pub struct Cache {
-    paths: HashMap<PathKey, PathEntry>,
+    paths: HashMap<PathKey, u16>,
     next_path_key: u32,
     glyphs: HashMap<(FontKey, GlyphKey), GlyphEntry>,
     next_font_key: u32,
     rect: Option<(PathKey, Path)>,
-    indices_free: u16,
-    vertices_free: u16,
+    paths_free: u16,
 }
 
 impl Cache {
@@ -156,8 +150,7 @@ impl Cache {
             glyphs: HashMap::new(),
             next_font_key: 1,
             rect: None,
-            indices_free: 0,
-            vertices_free: 0
+            paths_free: 0,
         }
     }
 

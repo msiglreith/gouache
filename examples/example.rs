@@ -88,7 +88,9 @@ fn main() {
                         glutin::MouseScrollDelta::PixelDelta(position) => {
                             size *= 1.01f32.powf(-position.y as f32);
                         }
-                        _ => {}
+                        glutin::MouseScrollDelta::LineDelta(_dx, dy) => {
+                            size *= 1.01f32.powf(dy as f32 * 12.0);
+                        }
                     },
                     KeyboardInput { input, .. } => match input {
                         glutin::KeyboardInput {
