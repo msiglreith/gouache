@@ -4,13 +4,94 @@ use crate::frame::*;
 pub struct Path {
     pub(crate) offset: Vec2,
     pub(crate) size: Vec2,
-    pub(crate) commands: Vec<[u16; 4]>,
+    pub(crate) buffer: Vec<[u16; 4]>,
 }
 
 #[derive(Copy, Clone)]
-enum Command {
+pub enum Command {
     Move(Vec2),
     Quad(Vec2, Vec2),
+}
+
+impl Path {
+    pub fn build(commands: &[Command]) -> Path {
+        fn split_at(p1: Vec2, p2: Vec2, p3: Vec2, t: f32) -> (Vec2, Vec2, Vec2, Vec2, Vec2) {
+            let p12 = Vec2::lerp(t, p1, p2);
+            let p23 = Vec2::lerp(t, p2, p3);
+            let point = Vec2::lerp(t, p12, p23);
+            (p1, p12, point, p23, p3)
+        }
+
+        let mut commands_monotone = Vec::with_capacity(commands.len());
+        let mut last = Vec2::new(0.0, 0.0);
+        for &command in commands {
+            match command {
+                Command::Move(p) => {
+                    last = p;
+                    commands_monotone.push(command);
+                }
+                Command::Quad(p1, p2) => {
+                    if (last.y <= p1.y && p1.y <= p2.y) || (p2.y <= p1.y && p1.y <= last.y) {
+                        commands_monotone.push(command);
+                    } else {
+                        let split = (last.y - p1.y) / (last.y - 2.0 * p1.y + p2.y);
+                        let (p1, p2, p3, p4, p5) = split_at(last, p1, p2, split);
+                        commands_monotone.push(Command::Quad(p2, p3));
+                        commands_monotone.push(Command::Quad(p4, p5));
+                    }
+                    last = p2;
+                }
+            }
+        }
+
+        let mut min = Vec2::new(std::f32::INFINITY, std::f32::INFINITY);
+        let mut max = Vec2::new(-std::f32::INFINITY, -std::f32::INFINITY);
+        for command in commands_monotone.iter() {
+            match *command {
+                Command::Move(p) => {
+                    min = min.min(p);
+                    max = max.max(p);
+                }
+                Command::Quad(p1, p2) => {
+                    min = min.min(p1).min(p2);
+                    max = max.max(p1).max(p2);
+                }
+            }
+        }
+        if !min.x.is_finite() { min.x = 0.0; }
+        if !max.x.is_finite() { max.x = 0.0; }
+        if !min.y.is_finite() { min.y = 0.0; }
+        if !max.y.is_finite() { max.y = 0.0; }
+
+        let offset = min;
+        let size = max - min;
+
+        fn convert(vertex: Vec2, offset: Vec2, size: Vec2) -> (u16, u16) {
+            let scaled = (std::u16::MAX - 1) as f32 * Vec2::new((vertex.x - offset.x) / size.x, (vertex.y - offset.y) / size.y);
+            (scaled.x.round() as u16 + 1, scaled.y.round() as u16 + 1)
+        }
+
+        let mut buffer = Vec::with_capacity(commands_monotone.len());
+        for command in commands_monotone.iter() {
+            match *command {
+                Command::Move(p) => {
+                    let (x, y) = convert(p, offset, size);
+                    buffer.push([0, 0, x, y]);
+                }
+                Command::Quad(p1, p2) => {
+                    let (x1, y1) = convert(p1, offset, size);
+                    let (x2, y2) = convert(p2, offset, size);
+                    buffer.push([x1, y1, x2, y2]);
+                }
+            }
+        }
+
+        Path {
+            offset,
+            size,
+            buffer,
+        }
+    }
 }
 
 pub struct PathBuilder {
@@ -44,57 +125,7 @@ impl PathBuilder {
     }
 
     pub fn quadratic_to(&mut self, x1: f32, y1: f32, x2: f32, y2: f32) -> &mut Self {
-        fn monotone(a: f32, b: f32, c: f32) -> bool {
-            (a <= b && b <= c) || (c <= b && b <= a)
-        }
-
-        fn solve(a: f32, b: f32, c: f32) -> f32 {
-            (a - b) / (a - 2.0 * b + c)
-        }
-
-        fn split_at(p1: Vec2, p2: Vec2, p3: Vec2, t: f32) -> (Vec2, Vec2, Vec2, Vec2, Vec2) {
-            let p12 = Vec2::lerp(t, p1, p2);
-            let p23 = Vec2::lerp(t, p2, p3);
-            let point = Vec2::lerp(t, p12, p23);
-            (p1, p12, point, p23, p3)
-        }
-
-        let p1 = self.last;
-        let p2 = Vec2::new(x1, y1);
-        let p3 = Vec2::new(x2, y2);
-
-        let x_split = if !monotone(p1.x, p2.x, p3.x) {
-            Some(solve(p1.x, p2.x, p3.x))
-        } else {
-            None
-        };
-        let y_split = if !monotone(p1.y, p2.y, p3.y) {
-            Some(solve(p1.y, p2.y, p3.y))
-        } else {
-            None
-        };
-
-        match (x_split, y_split) {
-            (Some(x_split), Some(y_split)) => {
-                let (split1, split2) = (x_split.min(y_split), x_split.max(y_split));
-                let (p1, p2, p3, p4, p5) = split_at(p1, p2, p3, split1);
-                let (p3, p4, p5, p6, p7) = split_at(p3, p4, p5, (split2 - split1) / (1.0 - split1));
-
-                self.commands.push(Command::Quad(p2, p3));
-                self.commands.push(Command::Quad(p4, p5));
-                self.commands.push(Command::Quad(p6, p7));
-            }
-            (Some(split), None) | (None, Some(split)) => {
-                let (p1, p2, p3, p4, p5) = split_at(p1, p2, p3, split);
-
-                self.commands.push(Command::Quad(p2, p3));
-                self.commands.push(Command::Quad(p4, p5));
-            }
-            (None, None) => {
-                self.commands.push(Command::Quad(p2, p3));
-            }
-        }
-
+        self.commands.push(Command::Quad(Vec2::new(x1, y1), Vec2::new(x2, y2)));
         self.last = Vec2::new(x2, y2);
 
         self
@@ -158,52 +189,6 @@ impl PathBuilder {
     pub fn build(&mut self) -> Path {
         self.close();
 
-        let mut min = Vec2::new(std::f32::INFINITY, std::f32::INFINITY);
-        let mut max = Vec2::new(-std::f32::INFINITY, -std::f32::INFINITY);
-        for command in self.commands.iter() {
-            match *command {
-                Command::Move(p) => {
-                    min = min.min(p);
-                    max = max.max(p);
-                }
-                Command::Quad(p1, p2) => {
-                    min = min.min(p1).min(p2);
-                    max = max.max(p1).max(p2);
-                }
-            }
-        }
-        if !min.x.is_finite() { min.x = 0.0; }
-        if !max.x.is_finite() { max.x = 0.0; }
-        if !min.y.is_finite() { min.y = 0.0; }
-        if !max.y.is_finite() { max.y = 0.0; }
-
-        let offset = min;
-        let size = max - min;
-
-        fn convert(vertex: Vec2, offset: Vec2, size: Vec2) -> (u16, u16) {
-            let scaled = (std::u16::MAX - 1) as f32 * Vec2::new((vertex.x - offset.x) / size.x, (vertex.y - offset.y) / size.y);
-            (scaled.x.round() as u16 + 1, scaled.y.round() as u16 + 1)
-        }
-
-        let mut commands = Vec::with_capacity(self.commands.len());
-        for command in self.commands.iter() {
-            match *command {
-                Command::Move(p) => {
-                    let (x, y) = convert(p, offset, size);
-                    commands.push([0, 0, x, y]);
-                }
-                Command::Quad(p1, p2) => {
-                    let (x1, y1) = convert(p1, offset, size);
-                    let (x2, y2) = convert(p2, offset, size);
-                    commands.push([x1, y1, x2, y2]);
-                }
-            }
-        }
-
-        Path {
-            offset,
-            size,
-            commands,
-        }
+        Path::build(&self.commands)
     }
 }

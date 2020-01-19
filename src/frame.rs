@@ -35,10 +35,10 @@ impl<'c, 'r> Frame<'c, 'r> {
             index
         } else {
             let index = self.cache.paths_free;
-            self.cache.paths_free += path.commands.len() as u16;
+            self.cache.paths_free += path.buffer.len() as u16;
             self.cache.paths.insert(path_key, index);
 
-            self.renderer.upload(index, &path.commands);
+            self.renderer.upload(index, &path.buffer);
 
             index
         };
@@ -63,7 +63,7 @@ impl<'c, 'r> Frame<'c, 'r> {
             (p - d1 + v2 + d2).pixel_to_ndc(self.width, self.height),
         ];
         let col = color.to_linear_premul();
-        let path = [index, index + path.commands.len() as u16];
+        let path = [index, index + path.buffer.len() as u16];
 
         let i = self.vertices.len() as u16;
         self.vertices.extend_from_slice(&[
@@ -89,7 +89,7 @@ impl<'c, 'r> Frame<'c, 'r> {
                 glyphs.get(&key).unwrap()
             };
 
-            if entry.path.commands.len() > 0 {
+            if entry.path.buffer.len() > 0 {
                 self.draw_path(&entry.path, entry.key, position + transform * glyph.position, glyph.scale * transform, color);
             }
         }
