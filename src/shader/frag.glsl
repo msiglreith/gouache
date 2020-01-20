@@ -15,16 +15,22 @@ void main() {
 
     vec2 p0 = vec2(0.0, 0.0);
     float alpha = 0.0;
-    for (uint i = v_path.x; i < v_path.y; i++) {
+    for (uint i = v_path.x; i < v_path.y; ) {
         vec4 segment = texelFetch(paths, ivec2(int(i), 0), 0);
         vec2 p1 = segment.xy;
         vec2 p2 = segment.zw;
+
+        if (p1 == vec2(0.0, 0.0) && p2.y > 0.5) {
+            i += uint(p2.x * 65536.0);
+        } else {
+            i += 1u;
+        }
 
         vec2 y_footprint = v_uv.y + vec2(-0.5 * footprint.y, 0.5 * footprint.y);
         vec2 y_window = clamp(vec2(p2.y, p0.y), y_footprint.x, y_footprint.y);
         float y_overlap = (y_window.y - y_window.x) / footprint.y;
 
-        if (p1 != vec2(0.0, 0.0) && y_overlap != 0.0 && max(p0.x, p2.x) > v_uv.x - 0.5 * footprint.x) {
+        if (p1.x != 0.0 && y_overlap != 0.0 && max(p0.x, p2.x) > v_uv.x - 0.5 * footprint.x) {
             float a = p0.y - 2.0 * p1.y + p2.y;
             float b = p1.y - p0.y;
             float c = p0.y - 0.5 * (y_window.x + y_window.y);

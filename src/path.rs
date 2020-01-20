@@ -94,29 +94,147 @@ impl Path {
         if !min.y.is_finite() { min.y = 0.0; }
         if !max.y.is_finite() { max.y = 0.0; }
 
+        fn intersect(x1: f32, x2: f32, x3: f32, c: f32) -> f32 {
+            let a = x1 - 2.0 * x2 + x3;
+            let b = x2 - x1;
+            let c = x1 - c;
+            let sign = if b < 0.0 { -1.0 } else { 1.0 };
+            let q = -(b + sign * ((b * b - a * c).max(0.0)).sqrt());
+            let t1 = q / a;
+            let t2 = c / q;
+            if 0.0 <= t1 && t1 <= 1.0 { t1 } else { t2 }
+        }
 
         fn convert(vertex: Vec2, offset: Vec2, size: Vec2) -> (u16, u16) {
             let scaled = (std::u16::MAX - 1) as f32 * Vec2::new((vertex.x - offset.x) / size.x, (vertex.y - offset.y) / size.y);
             (scaled.x.round() as u16 + 1, scaled.y.round() as u16 + 1)
         }
 
-        let mut buffer = Vec::with_capacity(commands_monotone.len());
+        fn build_inner(
+            commands: &[Command],
+            buffer: &mut Vec<[u16; 4]>,
+            min: Vec2,
+            max: Vec2,
+            depth: usize,
+            offset: Vec2,
+            size: Vec2,
+        ) {
+            #[derive(Copy, Clone)]
+            enum Axis { X, Y };
+
+            #[inline(always)]
+            fn get_axis(p: Vec2, axis: Axis) -> f32 {
+                match axis {
+                    Axis::X => p.x,
+                    Axis::Y => p.y,
+                }
+            }
+
+            #[inline(always)]
+            fn set_axis(p: Vec2, x: f32, axis: Axis) -> Vec2 {
+                match axis {
+                    Axis::X => Vec2::new(x, p.y),
+                    Axis::Y => Vec2::new(p.x, x),
+                }
+            }
+
+            let axis = if max.x - min.x > max.y - min.y { Axis::X } else { Axis::Y };
+
+            let split = 0.5 * (get_axis(min, axis) + get_axis(max, axis));
+
+            let mut first = Vec::new();
+            let mut second = Vec::new();
+            let mut intersection: Option<Vec2> = None;
+            let mut started_second = false;
+            let mut last = Vec2::new(0.0, 0.0);
+            for &command in commands.iter() {
+                match command {
+                    Command::Move(p) => {
+                        intersection = None;
+                        started_second = get_axis(p, axis) > split;
+                        last = p;
+
+                        if started_second {
+                            second.push(command);
+                        } else {
+                            first.push(command);
+                        }
+                    }
+                    Command::Quad(p1, p2) => {
+                        let (x1, x2, x3) = (get_axis(last, axis), get_axis(p1, axis), get_axis(p2, axis));
+                        if (x1 > split) != (x3 > split) {
+                            let t = intersect(x1, x2, x3, split);
+                            let (p1, p2, p3, p4, p5) = split_at(last, p1, p2, t);
+                            if let Some(intersection_point) = intersection {
+                                intersection = None;
+                                let midpoint = 0.5 * (p3 + intersection_point);
+                                if started_second {
+                                    first.push(Command::Quad(p2, p3));
+                                    first.push(Command::Quad(midpoint, intersection_point));
+                                    second.push(Command::Quad(midpoint, p3));
+                                    second.push(Command::Quad(p4, p5));
+                                } else {
+                                    second.push(Command::Quad(p2, p3));
+                                    second.push(Command::Quad(midpoint, intersection_point));
+                                    first.push(Command::Quad(midpoint, p3));
+                                    first.push(Command::Quad(p4, p5));
+                                }
+                            } else {
+                                intersection = Some(p3);
+                                if started_second {
+                                    second.push(Command::Quad(p2, p3));
+                                    first.push(Command::Move(p3));
+                                    first.push(Command::Quad(p4, p5));
+                                } else {
+                                    first.push(Command::Quad(p2, p3));
+                                    second.push(Command::Move(p3));
+                                    second.push(Command::Quad(p4, p5));
+                                }
+                            }
+                        } else {
+                            if started_second == intersection.is_some() {
+                                first.push(command);
+                            } else {
+                                second.push(command);
+                            }
+                        }
+                        last = p2;
+                    }
+                }
+            }
+
+            if first.len() >= commands.len() || second.len() >= commands.len() {
+                for command in commands.iter() {
+                    match *command {
+                        Command::Move(p) => {
+                            let (x, y) = convert(p, offset, size);
+                            buffer.push([0, 1, x, y]);
+                        }
+                        Command::Quad(p1, p2) => {
+                            let (x1, y1) = convert(p1, offset, size);
+                            let (x2, y2) = convert(p2, offset, size);
+                            buffer.push([x1, y1, x2, y2]);
+                        }
+                    }
+                }
+            } else {
+                let index = buffer.len();
+                buffer.push([0, 0, 0, 0]);
+                build_inner(&first, buffer, min, set_axis(max, split, axis), depth + 1, offset, size);
+                buffer[index] = [0, 0, (buffer.len() - index) as u16, 0];
+
+                let index = buffer.len();
+                buffer.push([0, 0, 0, 0]);
+                build_inner(&second, buffer, set_axis(min, split, axis), max, depth + 1, offset, size);
+                buffer[index] = [0, 0, (buffer.len() - index) as u16, 65535];
+            }
+        }
+
         let offset = min;
         let size = max - min;
 
-        for command in commands_monotone.iter() {
-            match *command {
-                Command::Move(p) => {
-                    let (x, y) = convert(p, offset, size);
-                    buffer.push([0, 0, x, y]);
-                }
-                Command::Quad(p1, p2) => {
-                    let (x1, y1) = convert(p1, offset, size);
-                    let (x2, y2) = convert(p2, offset, size);
-                    buffer.push([x1, y1, x2, y2]);
-                }
-            }
-        }
+        let mut buffer = Vec::with_capacity(commands_monotone.len());
+        build_inner(&commands_monotone, &mut buffer, min, max, 0, offset, size);
 
         Path {
             offset,
@@ -124,9 +242,7 @@ impl Path {
             buffer,
         }
     }
-}
 
-impl Path {
     pub fn get_quad(&self, position: Vec2, transform: Mat2x2) -> Quad {
         let p = position + transform * Vec2::new(self.offset.x, self.offset.y);
         let v1 = transform * Vec2::new(self.size.x, 0.0);
