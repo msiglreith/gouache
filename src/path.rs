@@ -15,6 +15,14 @@ pub enum Command {
 
 impl Path {
     pub fn build(commands: &[Command]) -> Path {
+        fn monotone(x1: f32, x2: f32, x3: f32) -> bool {
+            (x1 <= x2 && x2 <= x3) || (x3 <= x2 && x2 <= x1)
+        }
+
+        fn stationary_point(x1: f32, x2: f32, x3: f32) -> f32 {
+            (x1 - x2) / (x1 - 2.0 * x2 + x3)
+        }
+
         fn split_at(p1: Vec2, p2: Vec2, p3: Vec2, t: f32) -> (Vec2, Vec2, Vec2, Vec2, Vec2) {
             let p12 = Vec2::lerp(t, p1, p2);
             let p23 = Vec2::lerp(t, p2, p3);
@@ -27,18 +35,41 @@ impl Path {
         for &command in commands {
             match command {
                 Command::Move(p) => {
-                    last = p;
                     commands_monotone.push(command);
+                    last = p;
                 }
                 Command::Quad(p1, p2) => {
-                    if (last.y <= p1.y && p1.y <= p2.y) || (p2.y <= p1.y && p1.y <= last.y) {
-                        commands_monotone.push(command);
+                    let x_split = if monotone(last.x, p1.x, p2.x) {
+                        None
                     } else {
-                        let split = (last.y - p1.y) / (last.y - 2.0 * p1.y + p2.y);
-                        let (p1, p2, p3, p4, p5) = split_at(last, p1, p2, split);
-                        commands_monotone.push(Command::Quad(p2, p3));
-                        commands_monotone.push(Command::Quad(p4, p5));
+                        Some(stationary_point(last.x, p1.x, p2.x))
+                    };
+
+                    let y_split = if monotone(last.y, p1.y, p2.y) {
+                        None
+                    } else {
+                        Some(stationary_point(last.y, p1.y, p2.y))
+                    };
+
+                    match (x_split, y_split) {
+                        (None, None) => {
+                            commands_monotone.push(command);
+                        }
+                        (Some(split), None) | (None, Some(split)) => {
+                            let (p1, p2, p3, p4, p5) = split_at(last, p1, p2, split);
+                            commands_monotone.push(Command::Quad(p2, p3));
+                            commands_monotone.push(Command::Quad(p4, p5));
+                        }
+                        (Some(x_split), Some(y_split)) => {
+                            let (split1, split2) = (x_split.min(y_split), x_split.max(y_split));
+                            let (p1, p2, p3, p4, p5) = split_at(last, p1, p2, split1);
+                            let (p3, p4, p5, p6, p7) = split_at(p3, p4, p5, (split2 - split1) / (1.0 - split1));
+                            commands_monotone.push(Command::Quad(p2, p3));
+                            commands_monotone.push(Command::Quad(p4, p5));
+                            commands_monotone.push(Command::Quad(p6, p7));
+                        }
                     }
+
                     last = p2;
                 }
             }
@@ -63,8 +94,6 @@ impl Path {
         if !min.y.is_finite() { min.y = 0.0; }
         if !max.y.is_finite() { max.y = 0.0; }
 
-        let offset = min;
-        let size = max - min;
 
         fn convert(vertex: Vec2, offset: Vec2, size: Vec2) -> (u16, u16) {
             let scaled = (std::u16::MAX - 1) as f32 * Vec2::new((vertex.x - offset.x) / size.x, (vertex.y - offset.y) / size.y);
@@ -72,6 +101,9 @@ impl Path {
         }
 
         let mut buffer = Vec::with_capacity(commands_monotone.len());
+        let offset = min;
+        let size = max - min;
+
         for command in commands_monotone.iter() {
             match *command {
                 Command::Move(p) => {
