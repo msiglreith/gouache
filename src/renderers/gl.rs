@@ -9,7 +9,7 @@ macro_rules! offset {
 
 pub struct GlRenderer {
     prog: Program,
-    paths: Texture<[u16; 4]>,
+    paths: Texture<[u16; 3]>,
 }
 
 impl GlRenderer {
@@ -52,7 +52,9 @@ impl Renderer for GlRenderer {
 
     }
 
-    fn upload(&mut self, index: u16, paths: &[[u16; 4]]) {
+    fn upload(&mut self, index: u16, paths: &[[u16; 3]]) {
+        assert!(index % 2 == 0);
+        assert!(paths.len() % 2 == 0);
         self.paths.update(index as u32, 0, paths.len() as u32, 1, paths);
     }
 }
@@ -182,9 +184,9 @@ trait Texel {
     const TYPE: GLenum;
 }
 
-impl Texel for [u16; 4] {
-    const INTERNAL_FORMAT: GLint = gl::RGBA16 as GLint;
-    const FORMAT: GLenum = gl::RGBA;
+impl Texel for [u16; 3] {
+    const INTERNAL_FORMAT: GLint = gl::RGB16 as GLint;
+    const FORMAT: GLenum = gl::RGB;
     const TYPE: GLenum = gl::UNSIGNED_SHORT;
 }
 
