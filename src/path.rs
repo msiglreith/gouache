@@ -63,29 +63,41 @@ impl Path {
         if !min.y.is_finite() { min.y = 0.0; }
         if !max.y.is_finite() { max.y = 0.0; }
 
-        let offset = min;
-        let size = max - min;
-
         fn convert(vertex: Vec2, offset: Vec2, size: Vec2) -> (u16, u16) {
             let scaled = (std::u16::MAX - 1) as f32 * Vec2::new((vertex.x - offset.x) / size.x, (vertex.y - offset.y) / size.y);
             (scaled.x.round() as u16 + 1, scaled.y.round() as u16 + 1)
         }
 
-        let mut buffer = Vec::with_capacity(commands_monotone.len());
-        for command in commands_monotone.iter() {
-            match *command {
-                Command::Move(p) => {
-                    let (x, y) = convert(p, offset, size);
-                    buffer.push([0, 0, x, y]);
+        fn build_inner(
+            commands: &mut Vec<Command>,
+            buffer: &mut Vec<[u16; 4]>,
+            min: Vec2,
+            max: Vec2,
+        ) {
+            if commands.len() <= 8 {
+                for command in commands.iter() {
+                    match *command {
+                        Command::Move(p) => {
+                            let (x, y) = convert(p, offset, size);
+                            buffer.push([0, 0, x, y]);
+                        }
+                        Command::Quad(p1, p2) => {
+                            let (x1, y1) = convert(p1, offset, size);
+                            let (x2, y2) = convert(p2, offset, size);
+                            buffer.push([x1, y1, x2, y2]);
+                        }
+                    }
                 }
-                Command::Quad(p1, p2) => {
-                    let (x1, y1) = convert(p1, offset, size);
-                    let (x2, y2) = convert(p2, offset, size);
-                    buffer.push([x1, y1, x2, y2]);
-                }
+            } else {
+                
             }
         }
 
+        let mut buffer = Vec::with_capacity(commands_monotone.len());
+        build_inner(&mut commands, &mut buffer, min, max);
+
+        let offset = min;
+        let size = max - min;
         Path {
             offset,
             size,

@@ -39,6 +39,12 @@ impl Renderer for GlRenderer {
     }
 
     fn draw(&mut self, vertices: &[Vertex], indices: &[u16]) {
+        let mut query: u32 = 0;
+        unsafe {
+            gl::GenQueries(1, &mut query);
+            gl::BeginQuery(gl::TIME_ELAPSED, query);
+        }
+
         let vertex_array = VertexArray::new(vertices, indices);
         unsafe {
             gl::UseProgram(self.prog.id);
@@ -50,6 +56,17 @@ impl Renderer for GlRenderer {
             gl::DrawElements(gl::TRIANGLES, vertex_array.count, gl::UNSIGNED_SHORT, 0 as *const GLvoid);
         }
 
+        let mut elapsed: u64 = 0;
+        unsafe {
+            gl::EndQuery(gl::TIME_ELAPSED);
+            let mut available: i32 = 0;
+            while available == 0 {
+                gl::GetQueryObjectiv(query, gl::QUERY_RESULT_AVAILABLE, &mut available);
+            }
+            gl::GetQueryObjectui64v(query, gl::QUERY_RESULT, &mut elapsed);
+        }
+
+        println!("{}", elapsed);
     }
 
     fn upload(&mut self, index: u16, paths: &[[u16; 4]]) {
