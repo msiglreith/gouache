@@ -4,9 +4,8 @@ use crate::frame::*;
 pub struct Path {
     pub(crate) offset: Vec2,
     pub(crate) size: Vec2,
-    pub(crate) buffer: Vec<[u16; 3]>,
+    pub(crate) buffer: Vec<[u16; 4]>,
 }
-
 
 #[derive(Copy, Clone)]
 pub struct Segment {
@@ -90,18 +89,88 @@ impl Path {
         let offset = min;
         let size = max - min;
 
-        fn convert(vertex: Vec2, offset: Vec2, size: Vec2) -> (u16, u16) {
-            let scaled = (std::u16::MAX - 1) as f32 * Vec2::new((vertex.x - offset.x) / size.x, (vertex.y - offset.y) / size.y);
-            (scaled.x.round() as u16 + 1, scaled.y.round() as u16 + 1)
+        #[derive(PartialEq, PartialOrd)]
+        struct NonNan(f32);
+        impl NonNan {
+            fn new(x: f32) -> NonNan {
+                assert!(!x.is_nan());
+                NonNan(x)
+            }
+        }
+        impl Eq for NonNan {}
+        impl Ord for NonNan {
+            fn cmp(&self, other: &NonNan) -> std::cmp::Ordering {
+                self.0.partial_cmp(&other.0).unwrap()
+            }
+        }
+        segments_monotone.sort_by_key(|segment| NonNan::new(segment.p1.y.max(segment.p3.y)));
+        let mut min_actives = Vec::with_capacity(segments_monotone.len());
+        let mut map: Vec<usize> = vec![segments_monotone.len(); 16];
+
+        enum Event { Begin, End }
+        let begins = segments_monotone.iter().enumerate()
+            .map(|(i, segment)| (Event::Begin, i, segment.p1.y.min(segment.p3.y)));
+        let ends = segments_monotone.iter().enumerate()
+            .map(|(i, segment)| (Event::End, i, segment.p1.y.max(segment.p3.y)));
+        let mut events: Vec<(Event, usize, f32)> = begins.chain(ends).collect();
+        events.sort_by_key(|(_, _, y)| NonNan::new(*y));
+
+        let mut active: Vec<(usize, f32)> = Vec::new();
+        for (event, i, y) in events {
+            match event {
+                Event::Begin => {
+                    active.push((i, y));
+                }
+                Event::End => {
+                    min_actives.push(active.iter()
+                        .map(|(_,  y)| NonNan::new(*y)).min()
+                        .map_or(max.y, |y| y.0));
+                    if let Some(pos) = active.iter().position(|(j, _)| *j == i) {
+                        active.remove(pos);
+                    }
+                    let start_i = ((((y - offset.y) / size.y) * 16.0).ceil() as usize).min(15);
+                    for entry in map[0..start_i + 1].iter_mut() {
+                        *entry = i.min(*entry);
+                    }
+                }
+            }
+        }
+        dbg!(&map);
+
+        // const WIDTH: usize = 8;
+        // const HEIGHT: usize = 8;
+        // let cell = Vec2::new(size.x / WIDTH as f32, size.y / HEIGHT as f32);
+
+        // let mut grid: Vec<Option<bool>> = vec![None; 8 * 8];
+        // for x in 0..WIDTH {
+        //     for y in 0..HEIGHT {
+        //         let mut winding: isize = 0;
+        //         for segment in segments_monotone {
+        //             offset + Vec2::new(x as f32 * cell.x, y as f32 * cell.y);
+        //         }
+        //     }
+        // }
+
+        #[inline(always)]
+        fn convert(x: f32, offset: f32, size: f32) -> u16 {
+            ((std::u16::MAX - 1) as f32 * ((x - offset) / size)).round() as u16 + 1
         }
 
         let mut buffer = Vec::with_capacity(segments_monotone.len());
-        for segment in segments_monotone.iter() {
-            let (x1, y1) = convert(segment.p1, offset, size);
-            let (x2, y2) = convert(segment.p2, offset, size);
-            let (x3, y3) = convert(segment.p3, offset, size);
-            buffer.push([x1, y1, x2]);
-            buffer.push([y2, x3, y3]);
+
+        for i in map {
+            buffer.push([i as u16, 0, 0, 0]);
+        }
+
+        for (segment, min_active) in segments_monotone.iter().zip(min_actives.iter()) {
+            buffer.push([
+                convert(segment.p1.x, offset.x, size.x), convert(segment.p1.y, offset.y, size.y),
+                convert(segment.p2.x, offset.x, size.x), convert(segment.p2.y, offset.y, size.y),
+            ]);
+            buffer.push([
+                convert(segment.p3.x, offset.x, size.x), convert(segment.p3.y, offset.y, size.y),
+                convert(*min_active, offset.y, size.y), 0,
+            ]);
         }
 
         Path {

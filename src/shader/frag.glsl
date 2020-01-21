@@ -12,18 +12,30 @@ void main() {
     vec2 ddx = dFdx(v_uv);
     vec2 ddy = dFdy(v_uv);
     vec2 footprint = sqrt(ddx * ddx + ddy * ddy);
+    vec2 y_footprint = v_uv.y + vec2(-0.5 * footprint.y, 0.5 * footprint.y);
+
+    uint start = 2u * uint(65536.0 * texelFetch(paths, ivec2(int(v_path.x + clamp(uint(y_footprint.x * 16.0), 0, 15)), 0), 0).x);
 
     float alpha = 0.0;
-    for (uint i = v_path.x; i < v_path.y; i += 2u) {
-        vec3 t1 = texelFetch(paths, ivec2(int(i), 0), 0).xyz;
-        vec3 t2 = texelFetch(paths, ivec2(int(i + 1u), 0), 0).xyz;
+    vec4 t1;
+    vec4 t2;
+    vec4 t1_next = texelFetch(paths, ivec2(int(v_path.x + 16u + start), 0), 0).xyzw;
+    vec4 t2_next = texelFetch(paths, ivec2(int(v_path.x + 17u + start), 0), 0).xyzw;
+    for (uint i = v_path.x + 16u + start; i < v_path.y; i += 2u) {
+        t1 = t1_next;
+        t2 = t2_next;
+        t1_next = texelFetch(paths, ivec2(int(i + 2u), 0), 0).xyzw;
+        t2_next = texelFetch(paths, ivec2(int(i + 3u), 0), 0).xyzw;
         vec2 p1 = t1.xy;
-        vec2 p2 = vec2(t1.z, t2.x);
-        vec2 p3 = t2.yz;
+        vec2 p2 = t1.zw;
+        vec2 p3 = t2.xy;
 
-        vec2 y_footprint = v_uv.y + vec2(-0.5 * footprint.y, 0.5 * footprint.y);
         vec2 y_window = clamp(vec2(p3.y, p1.y), y_footprint.x, y_footprint.y);
         float y_overlap = (y_window.y - y_window.x) / footprint.y;
+
+        // if (min(p1.y, p3.y) > y_footprint.y) { break; }
+
+        if (t2.z > y_footprint.y) { break; }
 
         if (y_overlap != 0.0 && max(p1.x, p3.x) > v_uv.x - 0.5 * footprint.x) {
             float a = p1.y - 2.0 * p2.y + p3.y;
