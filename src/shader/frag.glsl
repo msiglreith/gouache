@@ -12,6 +12,7 @@ void main() {
     vec2 ddx = dFdx(v_uv);
     vec2 ddy = dFdy(v_uv);
     vec2 footprint = sqrt(ddx * ddx + ddy * ddy);
+    vec2 y_footprint = v_uv.y + vec2(-0.5 * footprint.y, 0.5 * footprint.y);
 
     float alpha = 0.0;
     for (uint i = v_path.x; i < v_path.y; i += 2u) {
@@ -21,9 +22,10 @@ void main() {
         vec2 p2 = vec2(t1.z, t2.x);
         vec2 p3 = t2.yz;
 
-        vec2 y_footprint = v_uv.y + vec2(-0.5 * footprint.y, 0.5 * footprint.y);
         vec2 y_window = clamp(vec2(p3.y, p1.y), y_footprint.x, y_footprint.y);
         float y_overlap = (y_window.y - y_window.x) / footprint.y;
+
+        if (min(p1.y, p3.y) > y_footprint.y) { break; }
 
         if (y_overlap != 0.0 && max(p1.x, p3.x) > v_uv.x - 0.5 * footprint.x) {
             float a = p1.y - 2.0 * p2.y + p3.y;

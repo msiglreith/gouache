@@ -93,18 +93,30 @@ impl Path {
         let offset = min;
         let size = max - min;
 
-        fn convert(vertex: Vec2, offset: Vec2, size: Vec2) -> (u16, u16) {
-            let scaled = (std::u16::MAX - 1) as f32 * Vec2::new((vertex.x - offset.x) / size.x, (vertex.y - offset.y) / size.y);
-            (scaled.x.round() as u16 + 1, scaled.y.round() as u16 + 1)
-        }
+        segments_monotone.sort_unstable_by(|segment1, segment2| {
+            let y1 = segment1.p1.y.min(segment1.p3.y);
+            let y2 = segment2.p1.y.min(segment2.p3.y);
+            y1.partial_cmp(&y2).unwrap_or(std::cmp::Ordering::Less)
+        });
 
         let mut buffer = Vec::with_capacity(segments_monotone.len());
-        for segment in segments_monotone.iter() {
-            let (x1, y1) = convert(segment.p1, offset, size);
-            let (x2, y2) = convert(segment.p2, offset, size);
-            let (x3, y3) = convert(segment.p3, offset, size);
-            buffer.push([x1, y1, x2]);
-            buffer.push([y2, x3, y3]);
+
+        #[inline(always)]
+        fn convert(x: f32, offset: f32, size: f32) -> u16 {
+            (std::u16::MAX as f32 * ((x - offset) / size)).round() as u16
+        }
+
+        for segment in segments_monotone {
+            buffer.push([
+                convert(segment.p1.x, offset.x, size.x),
+                convert(segment.p1.y, offset.y, size.y),
+                convert(segment.p2.x, offset.x, size.x),
+            ]);
+            buffer.push([
+                convert(segment.p2.y, offset.y, size.y),
+                convert(segment.p3.x, offset.x, size.x),
+                convert(segment.p3.y, offset.y, size.y),
+            ]);
         }
 
         Path {
