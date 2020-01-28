@@ -99,7 +99,25 @@ impl Path {
             y1.partial_cmp(&y2).unwrap_or(std::cmp::Ordering::Less)
         });
 
-        let mut buffer = Vec::with_capacity(segments_monotone.len());
+        let mut map = vec![segments_monotone.len(); 16];
+        for (i, segment) in segments_monotone.iter().enumerate() {
+            let max_y = segment.p1.y.max(segment.p3.y);
+            let max_i = ((((max_y - offset.y) / size.y) * 16.0).ceil() as usize).min(15);
+            if let Some(entry) = map.get_mut(max_i) {
+                *entry = i.min(*entry);
+            }
+        }
+        let mut min = segments_monotone.len();
+        for entry in map.iter_mut().rev() {
+            min = min.min(*entry);
+            *entry = min;
+        }
+
+        let mut buffer = Vec::with_capacity(segments_monotone.len() + 16);
+
+        for i in map {
+            buffer.push([i as u16, 0, 0]);
+        }
 
         #[inline(always)]
         fn convert(x: f32, offset: f32, size: f32) -> u16 {

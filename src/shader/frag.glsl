@@ -14,10 +14,12 @@ void main() {
     vec2 footprint = sqrt(ddx * ddx + ddy * ddy);
     vec2 y_footprint = v_uv.y + vec2(-0.5 * footprint.y, 0.5 * footprint.y);
 
+    uint start = 2u * uint(65536.0 * texelFetch(paths, ivec2(int(v_path.x + clamp(uint(y_footprint.x * 16.0), 0, 15)), 0), 0).x);
+
     float alpha = 0.0;
-    vec3 t1 = texelFetch(paths, ivec2(int(v_path.x), 0), 0).xyz;
-    vec3 t2 = texelFetch(paths, ivec2(int(v_path.x + 1u), 0), 0).xyz;
-    for (uint i = v_path.x; i < v_path.y; i += 2u) {
+    vec3 t1 = texelFetch(paths, ivec2(int(v_path.x + 16u + start), 0), 0).xyz;
+    vec3 t2 = texelFetch(paths, ivec2(int(v_path.x + 17u + start), 0), 0).xyz;
+    for (uint i = v_path.x + 16u + start; i < v_path.y; i += 2u) {
         vec2 p1 = t1.xy;
         vec2 p2 = vec2(t1.z, t2.x);
         vec2 p3 = t2.yz;
