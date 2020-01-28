@@ -99,42 +99,69 @@ impl Path {
             y1.partial_cmp(&y2).unwrap_or(std::cmp::Ordering::Less)
         });
 
-        let mut map = vec![segments_monotone.len(); 16];
-        for (i, segment) in segments_monotone.iter().enumerate() {
-            let max_y = segment.p1.y.max(segment.p3.y);
-            let max_i = ((((max_y - offset.y) / size.y) * 16.0).ceil() as usize).min(15);
-            if let Some(entry) = map.get_mut(max_i) {
-                *entry = i.min(*entry);
-            }
+        struct Lane {
+            segments: Vec<Segment>,
+            map: Vec<usize>,
         }
-        let mut min = segments_monotone.len();
-        for entry in map.iter_mut().rev() {
-            min = min.min(*entry);
-            *entry = min;
+
+        const NUM_LANES: usize = 2;
+        let lane_width = size.x / NUM_LANES as f32;
+        let mut lanes = Vec::with_capacity(NUM_LANES);
+        for i in 0..NUM_LANES {
+            let mut segments = Vec::new();
+            let min_x = offset.x + i as f32 * lane_width - 0.05 * size.x.max(size.y);
+            let max_x = offset.x + (i + 1) as f32 * lane_width + 0.05 * size.x.max(size.y);
+            for segment in segments_monotone.iter() {
+                if segment.p1.x.min(segment.p3.x) <= max_x && segment.p1.x.max(segment.p3.x) >= min_x {
+                    segments.push(*segment);
+                }
+            }
+
+            let mut map = vec![segments.len(); 16];
+            for (j, segment) in segments.iter().enumerate() {
+                let max_y = segment.p1.y.max(segment.p3.y);
+                let max_j = ((((max_y - offset.y) / size.y) * 16.0).ceil() as usize).min(15);
+                if let Some(entry) = map.get_mut(max_j) {
+                    *entry = j.min(*entry);
+                }
+            }
+            let mut min = segments_monotone.len();
+            for entry in map.iter_mut().rev() {
+                min = min.min(*entry);
+                *entry = min;
+            }
+
+            lanes.push(Lane { segments, map });
         }
 
         let mut buffer = Vec::with_capacity(segments_monotone.len() + 16);
 
-        for i in map {
-            buffer.push([i as u16, 0, 0]);
+        let mut lane_start = 0;
+        for lane in lanes.iter() {
+            for i in lane.map.iter() {
+                buffer.push([lane_start as u16 + *i as u16, lane_start as u16 + lane.segments.len() as u16, 0]);
+            }
+            lane_start += lane.segments.len();
         }
 
-        #[inline(always)]
-        fn convert(x: f32, offset: f32, size: f32) -> u16 {
-            (std::u16::MAX as f32 * ((x - offset) / size)).round() as u16
-        }
+        for lane in lanes.iter() {
+            #[inline(always)]
+            fn convert(x: f32, offset: f32, size: f32) -> u16 {
+                ((std::u16::MAX - 1) as f32 * ((x - offset) / size)).round() as u16 + 1
+            }
 
-        for segment in segments_monotone {
-            buffer.push([
-                convert(segment.p1.x, offset.x, size.x),
-                convert(segment.p1.y, offset.y, size.y),
-                convert(segment.p2.x, offset.x, size.x),
-            ]);
-            buffer.push([
-                convert(segment.p2.y, offset.y, size.y),
-                convert(segment.p3.x, offset.x, size.x),
-                convert(segment.p3.y, offset.y, size.y),
-            ]);
+            for segment in lane.segments.iter() {
+                buffer.push([
+                    convert(segment.p1.x, offset.x, size.x),
+                    convert(segment.p1.y, offset.y, size.y),
+                    convert(segment.p2.x, offset.x, size.x),
+                ]);
+                buffer.push([
+                    convert(segment.p2.y, offset.y, size.y),
+                    convert(segment.p3.x, offset.x, size.x),
+                    convert(segment.p3.y, offset.y, size.y),
+                ]);
+            }
         }
 
         Path {

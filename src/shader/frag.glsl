@@ -14,12 +14,13 @@ void main() {
     vec2 footprint = sqrt(ddx * ddx + ddy * ddy);
     vec2 y_footprint = v_uv.y + vec2(-0.5 * footprint.y, 0.5 * footprint.y);
 
-    uint start = 2u * uint(65536.0 * texelFetch(paths, ivec2(int(v_path.x + clamp(uint(y_footprint.x * 16.0), 0, 15)), 0), 0).x);
+    uvec2 lane = 2u * uvec2(65536.0 * texelFetch(paths, ivec2(int(v_path.x + 16u * clamp(uint(v_uv.x * 2.0), 0, 1) + clamp(uint(y_footprint.x * 16.0), 0, 15)), 0), 0).xy);
+    float flip = v_uv.x < 0.5 ? -1.0 : 1.0;
 
     float alpha = 0.0;
-    vec3 t1 = texelFetch(paths, ivec2(int(v_path.x + 16u + start), 0), 0).xyz;
-    vec3 t2 = texelFetch(paths, ivec2(int(v_path.x + 17u + start), 0), 0).xyz;
-    for (uint i = v_path.x + 16u + start; i < v_path.y; i += 2u) {
+    vec3 t1 = texelFetch(paths, ivec2(int(v_path.x + 32u + lane.x), 0), 0).xyz;
+    vec3 t2 = texelFetch(paths, ivec2(int(v_path.x + 33u + lane.x), 0), 0).xyz;
+    for (uint i = v_path.x + 32u + lane.x; i < v_path.x + 32u + lane.y; i += 2u) {
         vec2 p1 = t1.xy;
         vec2 p2 = vec2(t1.z, t2.x);
         vec2 p3 = t2.yz;
@@ -32,7 +33,7 @@ void main() {
         t1 = texelFetch(paths, ivec2(int(i + 2u), 0), 0).xyz;
         t2 = texelFetch(paths, ivec2(int(i + 3u), 0), 0).xyz;
 
-        if (y_overlap != 0.0 && max(p1.x, p3.x) > v_uv.x - 0.5 * footprint.x) {
+        if (y_overlap != 0.0) {
             float a = p1.y - 2.0 * p2.y + p3.y;
             float b = p2.y - p1.y;
             float c = p1.y - 0.5 * (y_window.x + y_window.y);
@@ -44,7 +45,7 @@ void main() {
 
             vec2 tangent = mix(p2 - p1, p3 - p2, t);
             float f = ((x - v_uv.x) * abs(tangent.y)) / length(footprint * tangent.yx);
-            float x_overlap = clamp(0.5 + f, 0.0, 1.0);
+            float x_overlap = clamp(0.5 + flip * f, 0.0, 1.0);
 
             alpha += x_overlap * y_overlap;
         }
