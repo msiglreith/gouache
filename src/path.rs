@@ -69,6 +69,10 @@ impl Path {
         let mut segments_monotone = Vec::with_capacity(segments.len());
         let mut last = Vec2::new(0.0, 0.0);
         for segment in segments {
+            if segment.p1.y == segment.p2.y && segment.p2.y == segment.p3.y {
+                continue;
+            }
+
             let [s1, s2, s3] = segment.split_to_monotone();
             if let Some(s1) = s1 { segments_monotone.push(s1); }
             if let Some(s2) = s2 { segments_monotone.push(s2); }
